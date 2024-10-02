@@ -15,5 +15,21 @@ jobs:
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Create .env file
+        run: |
+          echo "DEV=true" >> .env
+          echo "DB_HOST=db" >> .env
+          echo "DB_NAME=devdb" >> .env
+          echo "DB_USER=devuser" >> .env
+          echo "DB_PASS=devpass" >> .env
+          echo "KEYCLOAK_ADMIN=devuser" >> .env
+          echo "KEYCLOAK_ADMIN_PASSWORD=devpass" >> .env
+          echo "KEYCLOAK_URL=http://localhost:8080" >> .env
+          echo "KEYCLOAK_REALM=example" >> .env
+          echo "KEYCLOAK_BACKEND_CLIENT_ID=backend" >> .env
+          echo "KEYCLOAK_CLIENT_SECRET=secret" >> .env
+          echo "KEYCLOAK_FRONTEND_CLIENT_ID=inethi-frontend-client" >> .env
+          echo "KEYCLOAK_ADMIN_USERNAME=admin" >> .env
+          echo "KEYCLOAK_ADMIN_PASSWORD=adminpass" >> .env
       - name: Lint
         run: docker compose -f docker-compose-dev.yml run --rm app sh -c "flake8"
