@@ -11,10 +11,14 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 import os
 from pathlib import Path
+import environ
 
+env = environ.Env()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+if os.path.exists(os.path.join(BASE_DIR, ".env")):
+    environ.Env.read_env(os.path.join(BASE_DIR, ".env"))
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
@@ -40,6 +44,7 @@ INSTALLED_APPS = [
     'core',
     'rest_framework',
     'drf_spectacular',
+    'django_keycloak'
 ]
 
 MIDDLEWARE = [
@@ -53,7 +58,11 @@ MIDDLEWARE = [
 ]
 
 ROOT_URLCONF = 'inethi.urls'
-
+# For admin site authentication
+AUTHENTICATION_BACKENDS = [
+    'django_keycloak.backends.KeycloakAuthorizationCodeBackend',
+]
+LOGIN_URL = "keycloak_login"
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -129,5 +138,29 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'django_keycloak.authentication.KeycloakDRFAuthentication',
+    ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
+}
+
+KEYCLOAK_CLIENTS = {
+    "DEFAULT": {
+        "URL": env("KEYCLOAK_URL"),
+        "REALM": env("KEYCLOAK_REALM"),
+        "CLIENT_ID": env("KEYCLOAK_BACKEND_CLIENT_ID"),
+        "CLIENT_SECRET": env("KEYCLOAK_CLIENT_SECRET"),
+    },
+
+    "API": {
+        "URL": env("KEYCLOAK_URL"),
+        "REALM": env("KEYCLOAK_REALM"),
+        "CLIENT_ID": env("KEYCLOAK_FRONTEND_CLIENT_ID"),
+        "CLIENT_SECRET": None,  # DRF client is public
+    },
+    "ADMIN": {
+        "USERNAME": env("KEYCLOAK_ADMIN_USERNAME"),
+        "PASSWORD": env("KEYCLOAK_ADMIN_PASSWORD"),
+        "REALM": env("KEYCLOAK_REALM"),
+    }
 }
