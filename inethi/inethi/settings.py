@@ -12,6 +12,7 @@ https://docs.djangoproject.com/en/5.1/ref/settings/
 import os
 from pathlib import Path
 import environ
+from keycloak import KeycloakOpenID, KeycloakOpenIDConnection, KeycloakAdmin
 
 env = environ.Env()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -44,7 +45,8 @@ INSTALLED_APPS = [
     'core',
     'rest_framework',
     'drf_spectacular',
-    'django_keycloak'
+    # iNethi Apps
+    'user'
 ]
 
 MIDDLEWARE = [
@@ -59,10 +61,8 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'inethi.urls'
 # For admin site authentication
-AUTHENTICATION_BACKENDS = [
-    'django_keycloak.backends.KeycloakAuthorizationCodeBackend',
-]
-LOGIN_URL = "keycloak_login"
+
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
@@ -138,29 +138,29 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'django_keycloak.authentication.KeycloakDRFAuthentication',
-    ],
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
 
-KEYCLOAK_CLIENTS = {
-    "DEFAULT": {
-        "URL": env("KEYCLOAK_URL"),
-        "REALM": env("KEYCLOAK_REALM"),
-        "CLIENT_ID": env("KEYCLOAK_BACKEND_CLIENT_ID"),
-        "CLIENT_SECRET": env("KEYCLOAK_CLIENT_SECRET"),
-    },
 
-    "API": {
-        "URL": env("KEYCLOAK_URL"),
-        "REALM": env("KEYCLOAK_REALM"),
-        "CLIENT_ID": env("KEYCLOAK_FRONTEND_CLIENT_ID"),
-        "CLIENT_SECRET": None,  # DRF client is public
-    },
-    "ADMIN": {
-        "USERNAME": env("KEYCLOAK_ADMIN_USERNAME"),
-        "PASSWORD": env("KEYCLOAK_ADMIN_PASSWORD"),
-        "REALM": env("KEYCLOAK_REALM"),
-    }
-}
+KEYCLOAK_OPENID = KeycloakOpenID(
+    server_url=env("KEYCLOAK_URL"),
+    client_id=env("KEYCLOAK_BACKEND_CLIENT_ID"),
+    realm_name=env("KEYCLOAK_REALM"),
+    client_secret_key=env("KEYCLOAK_CLIENT_SECRET"),
+)
+
+KEYCLOAK_CONNECTION = KeycloakOpenIDConnection(
+    server_url=env("KEYCLOAK_URL"),
+    username=env("KEYCLOAK_ADMIN"),
+    password=env("KEYCLOAK_ADMIN_PASSWORD"),
+    realm_name="master",
+    user_realm_name=env("KEYCLOAK_REALM"),
+    client_id=env("KEYCLOAK_BACKEND_CLIENT_ID"),
+    client_secret_key=env("KEYCLOAK_CLIENT_SECRET"),
+    verify=True
+)
+
+AUTH_USER_MODEL = 'core.User'
+
+KEYCLOAK_ADMIN = KeycloakAdmin(connection=KEYCLOAK_CONNECTION)
+

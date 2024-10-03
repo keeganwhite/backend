@@ -5,7 +5,7 @@ on: [push]
 
 jobs:
   lint:
-    name: Lint
+    name: Test and Lint
     runs-on: ubuntu-22.04
     steps:
       - name: Login to Docker Hub
@@ -33,3 +33,5 @@ jobs:
           echo "KEYCLOAK_ADMIN_PASSWORD=adminpass" >> .env
       - name: Lint
         run: docker compose -f docker-compose-dev.yml run --rm app sh -c "flake8"
+      - name: Tests
+        run: docker compose -f docker-compose-dev.yml run --rm app sh -c "python manage.py test"

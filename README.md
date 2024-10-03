@@ -15,8 +15,8 @@ _to do_
 ### Testing
 Ensure the `DEV` variable in the [compose file](docker-compose.yml) is set to true: `DEV=true`.
 
-* run flake8 in your docker container: `docker compose run --rm app sh -c "flake8"`
-* run unit tests in your docker container: `docker compose run --rm app sh -c "python manage.py test"`
+* run flake8 in your docker container: `docker compose -f docker-compose-dev.yml run --rm app sh -c "flake8"`
+* run unit tests in your docker container: `docker compose -f docker-compose-dev.yml run --rm app sh -c "python manage.py test"`
 
 ## Notes
 * if you want to run Django locally without docker, and you want to use _psycopg2_ you can either run 
