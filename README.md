@@ -3,6 +3,8 @@ The backend for the bespoke iNethi system.
 
 ## Commands
 ### Running the Code
+Look at [.env.example](.env.example) and create a `.env` file with all the variables listed in this file. See 
+the [Notes section](#notes) below for information on this process.
 
 **Dev**
 
@@ -29,3 +31,9 @@ sudo apt install build-essential
 sudo apt install libpq-dev
 ```
 then run `pip install psycopg2` to install _psycopg2_.
+* Generate your encryption key as follows:
+```
+from cryptography.fernet import Fernet
+encryption_key = Fernet.generate_key()
+print(f"Your encryption key: {encryption_key.decode()}")
+```
