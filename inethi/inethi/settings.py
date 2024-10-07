@@ -156,7 +156,7 @@ KEYCLOAK_CONNECTION = KeycloakOpenIDConnection(
     server_url=env("KEYCLOAK_URL"),
     username=env("KEYCLOAK_ADMIN"),
     password=env("KEYCLOAK_ADMIN_PASSWORD"),
-    realm_name="master",
+    realm_name=env("KEYCLOAK_REALM"),
     user_realm_name=env("KEYCLOAK_REALM"),
     client_id=env("KEYCLOAK_BACKEND_CLIENT_ID"),
     client_secret_key=env("KEYCLOAK_CLIENT_SECRET"),
@@ -173,5 +173,14 @@ with open(krone_abi_fp, "r", encoding="utf-8") as abi_file:
 WALLET_ENCRYPTION_KEY = env("WALLET_ENCRYPTION_KEY")
 BLOCKCHAIN_PROVIDER_URL = env("BLOCKCHAIN_PROVIDER_URL")
 CONTRACT_ADDRESS=env("CONTRACT_ADDRESS")
+
+SPECTACULAR_SETTINGS = {
+    'TITLE': 'iNethi API',
+    'DESCRIPTION': 'iNethi Backend API',
+    'VERSION': '0.0.1',
+    'EXTENSIONS': [
+        'inethi.schema_extensions.MyAuthenticationScheme',
+    ],
+}
 
 

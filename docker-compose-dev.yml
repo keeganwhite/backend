@@ -33,7 +33,6 @@ services:
       - ./.env
     volumes:
       - dev-db-data:/var/lib/postgresql/data
-      - ./keycloak:/opt/keycloak/data/import
     environment:
       - POSTGRES_DB=${DB_NAME:-devdb}
       - POSTGRES_USER=${DB_USER:-devuser}
@@ -52,8 +51,8 @@ services:
     volumes:
       - dev-keycloak-data:/opt/keycloak
     environment:
-      - KEYCLOAK_ADMIN=${KEYCLOAK_ADMIN:-devuser}
-      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_ADMIN_PASSWORD:-devpass}
+      - KEYCLOAK_ADMIN=${KEYCLOAK_MASTER_ADMIN:-devuser}
+      - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_MASTER_ADMIN_PASSWORD:-devpass}
 
 volumes:
   dev-db-data:
