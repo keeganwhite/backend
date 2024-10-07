@@ -282,7 +282,10 @@ class PrivateWalletApiTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
     def test_retrieve_own_wallet_details(self):
-        """Test that the authenticated user can retrieve their own wallet details"""
+        """
+        Test that the authenticated user can
+        retrieve their own wallet details
+        """
         encrypted_key = encrypt_private_key('mock-private-key')
         wallet = Wallet.objects.create(
             user=self.user,
