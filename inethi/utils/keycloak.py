@@ -1,6 +1,5 @@
 from django.contrib.auth import get_user_model
 from rest_framework.authentication import BaseAuthentication
-from keycloak import KeycloakOpenID
 from django.conf import settings
 from rest_framework.exceptions import AuthenticationFailed, NotAuthenticated
 
@@ -18,12 +17,7 @@ class KeycloakAuthentication(BaseAuthentication):
         if token.startswith('Bearer '):
             token = token[len('Bearer '):]
 
-        keycloak_openid = KeycloakOpenID(
-            server_url=settings.KEYCLOAK_SERVER_URL,
-            client_id=settings.KEYCLOAK_CLIENT_ID,
-            realm_name=settings.KEYCLOAK_REALM,
-            client_secret_key=settings.KEYCLOAK_CLIENT_SECRET,
-        )
+        keycloak_openid = settings.KEYCLOAK_OPENID
 
         try:
             # Verify token with Keycloak

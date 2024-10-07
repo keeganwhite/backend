@@ -71,9 +71,9 @@ class PublicUserApiTests(TestCase):
         ).exists()
         self.assertFalse(user_exists)
 
-    @patch('utils.keycloak.KeycloakOpenID.userinfo')
-    @patch('utils.keycloak.KeycloakOpenID.introspect')
-    @patch('utils.keycloak.KeycloakOpenID.token')
+    @patch('inethi.settings.KEYCLOAK_OPENID.userinfo')
+    @patch('inethi.settings.KEYCLOAK_OPENID.introspect')
+    @patch('inethi.settings.KEYCLOAK_OPENID.token')
     @patch('inethi.settings.KEYCLOAK_ADMIN.create_user')
     def test_create_token_for_user(
             self,
@@ -113,7 +113,7 @@ class PublicUserApiTests(TestCase):
         mock_keycloak_introspect.assert_called_once()
 
     @patch('inethi.settings.KEYCLOAK_ADMIN.create_user')
-    @patch('utils.keycloak.KeycloakOpenID.token')
+    @patch('inethi.settings.KEYCLOAK_OPENID.token')
     def test_create_token_invalid_credentials(
             self,
             mock_keycloak_token,
@@ -151,8 +151,6 @@ class PublicUserApiTests(TestCase):
     def test_retrieve_user_unauthorized(self):
         """Test that authentication is required for users"""
         res = self.client.get(ME_URL)
-        print(f"Response status code: {res.status_code}")
-        print(f"Response data: {res.data}")
         self.assertEqual(
             res.status_code,
             status.HTTP_403_FORBIDDEN

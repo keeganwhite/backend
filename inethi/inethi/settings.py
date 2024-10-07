@@ -9,6 +9,7 @@ https://docs.djangoproject.com/en/5.1/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
+import json
 import os
 from pathlib import Path
 import environ
@@ -46,7 +47,8 @@ INSTALLED_APPS = [
     'rest_framework',
     'drf_spectacular',
     # iNethi Apps
-    'user'
+    'user',
+    'wallet'
 ]
 
 MIDDLEWARE = [
@@ -140,8 +142,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 REST_FRAMEWORK = {
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+AUTH_USER_MODEL = 'core.User'
 
-
+# Keycloak config
 KEYCLOAK_OPENID = KeycloakOpenID(
     server_url=env("KEYCLOAK_URL"),
     client_id=env("KEYCLOAK_BACKEND_CLIENT_ID"),
@@ -160,7 +163,15 @@ KEYCLOAK_CONNECTION = KeycloakOpenIDConnection(
     verify=True
 )
 
-AUTH_USER_MODEL = 'core.User'
-
 KEYCLOAK_ADMIN = KeycloakAdmin(connection=KEYCLOAK_CONNECTION)
+
+# Krone config
+krone_abi_fp = os.path.join(BASE_DIR, "contracts/krone_contract_abi.json")
+with open(krone_abi_fp, "r", encoding="utf-8") as abi_file:
+    ABI_FILE_PATH = krone_abi_fp
+    KRONE_CONTRACT_ABI = json.load(abi_file)
+WALLET_ENCRYPTION_KEY = env("WALLET_ENCRYPTION_KEY")
+BLOCKCHAIN_PROVIDER_URL = env("BLOCKCHAIN_PROVIDER_URL")
+CONTRACT_ADDRESS=env("CONTRACT_ADDRESS")
+
 

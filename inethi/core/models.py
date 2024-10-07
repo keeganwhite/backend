@@ -82,3 +82,18 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     USERNAME_FIELD = 'email'
     objects = UserManager()
+
+
+class Wallet(models.Model):
+    """Wallet Object"""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(max_length=255, default='default_name')
+    private_key = models.CharField(max_length=255)
+    address = models.CharField(max_length=255, unique=True)
+    token_common_name = models.CharField(max_length=255, default='KRONE')
+    token = models.CharField(max_length=255, default='KRONE')
+    token_type = models.CharField(max_length=255, default='ERC-20')
+    created_at = models.DateTimeField(auto_now_add=True)
