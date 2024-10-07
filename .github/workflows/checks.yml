@@ -30,7 +30,7 @@ jobs:
           echo "KEYCLOAK_CLIENT_SECRET=secret" >> .env
           echo "KEYCLOAK_FRONTEND_CLIENT_ID=inethi-frontend-client" >> .env
           echo "KEYCLOAK_ADMIN_USERNAME=admin" >> .env
-          echo "WALLET_ENCRYPTION_KEY=supersecretkey" >> .env
+          echo "WALLET_ENCRYPTION_KEY=fY6coDOzzi2NonOA2rdPI2f-a_MLie8oafZX5XgtZw4" >> .env # this is a placeholder and not used...
           echo "BLOCKCHAIN_PROVIDER_URL=https://forno.celo.org" >> .env
           echo "CONTRACT_ADDRESS=0x8Bab657c88eb3c724486D113E650D2c659aa23d2" >> .env
       - name: Lint
