@@ -16,7 +16,6 @@ class KeycloakAuthentication(BaseAuthentication):
         # Strip 'Bearer ' prefix if present
         if token.startswith('Bearer '):
             token = token[len('Bearer '):]
-        print(token)
         keycloak_openid = settings.KEYCLOAK_OPENID
 
         try:

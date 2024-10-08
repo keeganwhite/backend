@@ -14,7 +14,6 @@ import os
 from pathlib import Path
 import environ
 from keycloak import KeycloakOpenID, KeycloakOpenIDConnection, KeycloakAdmin
-
 env = environ.Env()
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -178,9 +177,8 @@ SPECTACULAR_SETTINGS = {
     'TITLE': 'iNethi API',
     'DESCRIPTION': 'iNethi Backend API',
     'VERSION': '0.0.1',
-    'EXTENSIONS': [
-        'inethi.schema_extensions.MyAuthenticationScheme',
-    ],
+    'SERVE_INCLUDE_SCHEMA': False,
+    'COMPONENT_SPLIT_REQUEST': True,
 }
 
 

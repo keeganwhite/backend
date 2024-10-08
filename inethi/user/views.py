@@ -25,14 +25,13 @@ def update_keycloak_user(user, data):
     """Helper method to update the user in Keycloak"""
     try:
         # Retrieve the Keycloak user ID based on the Django user
-        keycloak_user_id = settings.KEYCLOAK_ADMIN.get_user_id(user.email)
-
+        keycloak_user_id = settings.KEYCLOAK_ADMIN.get_user_id(user.username)
         # Prepare the Keycloak update payload
         keycloak_payload = {
             "firstName": data.get("first_name", user.first_name),
             "lastName": data.get("last_name", user.last_name),
             "email": user.email,
-            "username": user.email,
+            "username": user.username,
             "enabled": user.is_active,
         }
 
@@ -92,3 +91,30 @@ class ManageUserView(generics.RetrieveUpdateAPIView):
     def get_object(self):
         """Retrieve the authenticated user"""
         return self.request.user
+
+    def update(self, request, *args, **kwargs):
+        """Override the update method to sync updates with Keycloak"""
+        user = self.get_object()
+        partial = kwargs.pop('partial', False)
+        serializer = self.get_serializer(
+            user,
+            data=request.data,
+            partial=partial
+        )
+        serializer.is_valid(raise_exception=True)
+
+        # Save the changes to the Django user
+        self.perform_update(serializer)
+
+        # Update Keycloak with the new details
+        update_keycloak_user(user, request.data)
+
+        return Response(serializer.data)
+
+    def patch(self, request, *args, **kwargs):
+        """Override the patch method"""
+        return self.update(request, *args, **kwargs)
+
+    def put(self, request, *args, **kwargs):
+        """Override the put method"""
+        return self.update(request, *args, **kwargs)

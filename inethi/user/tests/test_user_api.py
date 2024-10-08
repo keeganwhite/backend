@@ -209,16 +209,42 @@ class PrivateUserApiTests(TestCase):
         res = self.client.post(ME_URL, {})
         self.assertEqual(res.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
 
-    def test_update_user_profile(self):
+    @patch('inethi.settings.KEYCLOAK_ADMIN.get_user_id')
+    @patch('inethi.settings.KEYCLOAK_ADMIN.update_user')
+    def test_update_user_profile(
+            self,
+            mock_keycloak_update_user,
+            mock_get_user_id
+    ):
         """Test updating user profile for authenticated user"""
+        mock_get_user_id.return_value = 'mock-keycloak-user-id'
+        mock_keycloak_update_user.return_value = {'status': 201}
+
         payload = {
+            "email": self.user.email,
+            "username": self.user.username,
             "first_name": "Updated First Name",
             "password": "newpassword123"
         }
 
         res = self.client.patch(ME_URL, payload)
 
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
         self.user.refresh_from_db()
         self.assertEqual(self.user.first_name, payload['first_name'])
         self.assertTrue(self.user.check_password(payload['password']))
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
+
+        # Verify that the Keycloak update methods were called
+        mock_get_user_id.assert_called_once_with(self.user.username)
+        mock_keycloak_update_user.assert_called_once_with(
+            'mock-keycloak-user-id',
+            {
+                "firstName": payload["first_name"],
+                "lastName": self.user.last_name,
+                "email": self.user.email,
+                "username": self.user.username,
+                "enabled": self.user.is_active,
+            }
+        )
+
