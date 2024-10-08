@@ -95,8 +95,11 @@ class PrivateWalletApiTests(TestCase):
         self.user = create_user(
             email='test@example.com',
             password='password123',
-            name='Test User'
+            username='test_username',
+            first_name='Test First Name',
+            last_name='Test Last Name',
         )
+
         self.client.force_authenticate(self.user)
 
         self.addCleanup(patcher.stop)  # Ensure the patch is stopped
@@ -123,8 +126,11 @@ class PrivateWalletApiTests(TestCase):
         client_two = create_user(
             email='test_two@example.com',
             password='testpass123',
-            name='Test UserTwo'
+            username='test_username_2',
+            first_name='Test First Name',
+            last_name='Test Last Name',
         )
+
         wallet_two = Wallet.objects.create(
             user=client_two,
             name='Test Wallet Two',
@@ -190,7 +196,9 @@ class PrivateWalletApiTests(TestCase):
         client_two = create_user(
             email='test_two@example.com',
             password='testpass123',
-            name='Test UserTwo'
+            username='test_username_2',
+            first_name='Test First Name',
+            last_name='Test Last Name',
         )
         wallet_two = Wallet.objects.create(
             user=client_two,
@@ -263,7 +271,9 @@ class PrivateWalletApiTests(TestCase):
         client_two = create_user(
             email='test_two@example.com',
             password='testpass123',
-            name='Test UserTwo'
+            username='test_username_2',
+            first_name='Test First Name',
+            last_name='Test Last Name',
         )
         encrypted_key = encrypt_private_key('mock-private-key')
         wallet_two = Wallet.objects.create(
@@ -305,8 +315,11 @@ class PrivateWalletApiTests(TestCase):
         client_two = create_user(
             email='test_two@example.com',
             password='testpass123',
-            name='Test UserTwo'
+            username='test_username_2',
+            first_name='Test First Name',
+            last_name='Test Last Name',
         )
+
         wallet_two = Wallet.objects.create(
             user=client_two,
             name='Test Wallet Two',

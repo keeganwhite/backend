@@ -1,16 +1,58 @@
 """
 Views for the user API
 """
+from keycloak.exceptions import (
+    KeycloakAuthenticationError,
+    KeycloakConnectionError,
+    KeycloakError
+)
 from rest_framework import generics, permissions, status
 from rest_framework.authtoken.views import ObtainAuthToken
+from rest_framework.exceptions import ValidationError
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
+
+from django.conf import settings
 
 from utils.keycloak import KeycloakAuthentication
 from .serializers import (
     UserSerializer,
     KeycloakAuthTokenSerializer
 )
+
+
+def update_keycloak_user(user, data):
+    """Helper method to update the user in Keycloak"""
+    try:
+        # Retrieve the Keycloak user ID based on the Django user
+        keycloak_user_id = settings.KEYCLOAK_ADMIN.get_user_id(user.email)
+
+        # Prepare the Keycloak update payload
+        keycloak_payload = {
+            "firstName": data.get("first_name", user.first_name),
+            "lastName": data.get("last_name", user.last_name),
+            "email": user.email,
+            "username": user.email,
+            "enabled": user.is_active,
+        }
+
+        # Update the Keycloak user
+        settings.KEYCLOAK_ADMIN.update_user(keycloak_user_id, keycloak_payload)
+
+    except KeycloakAuthenticationError:
+        raise ValidationError(
+            {'detail': 'Authentication with Keycloak failed.'}, code=401
+        )
+
+    except KeycloakConnectionError:
+        raise ValidationError(
+            {'detail': 'Unable to connect to Keycloak server.'}, code=503
+        )
+
+    except KeycloakError as e:
+        raise ValidationError(
+            {'detail': f'Keycloak error: {str(e)}'}, code=400
+        )
 
 
 class CreateUserView(generics.CreateAPIView):

@@ -16,7 +16,7 @@ class KeycloakAuthentication(BaseAuthentication):
         # Strip 'Bearer ' prefix if present
         if token.startswith('Bearer '):
             token = token[len('Bearer '):]
-
+        print(token)
         keycloak_openid = settings.KEYCLOAK_OPENID
 
         try:
@@ -27,6 +27,7 @@ class KeycloakAuthentication(BaseAuthentication):
             # Find or create the user in Django
             user = get_user_model().objects.filter(email=email).first()
             if not user:
+                print('Cannot find user')
                 raise AuthenticationFailed(
                     'User not found'
                 )

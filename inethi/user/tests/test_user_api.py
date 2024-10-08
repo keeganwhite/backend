@@ -28,7 +28,9 @@ class PublicUserApiTests(TestCase):
         payload = {
             'email': 'test@example.com',
             'password': 'testpassword123',
-            'name': 'Test name'
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
         }
 
         res = self.client.post(CREATE_USER_URL, payload)
@@ -50,7 +52,9 @@ class PublicUserApiTests(TestCase):
         payload = {
             'email': 'test@example.com',
             'password': 'testpassword123',
-            'name': 'Test name'
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
         }
         create_user(**payload)
         res = self.client.post(CREATE_USER_URL, payload)
@@ -62,7 +66,9 @@ class PublicUserApiTests(TestCase):
         payload = {
             'email': 'test@example.com',
             'password': 'test',
-            'name': 'Test name'
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
         }
         res = self.client.post(CREATE_USER_URL, payload)
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
@@ -96,7 +102,9 @@ class PublicUserApiTests(TestCase):
         user_details = {
             'email': 'test@example.com',
             'password': 'testpassword123',
-            'name': 'Test name'
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
         }
         create_user(**user_details)
 
@@ -126,7 +134,9 @@ class PublicUserApiTests(TestCase):
         user_details = {
             'email': 'test@example.com',
             'password': 'testpassword123',
-            'name': 'Test name'
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
         }
         create_user(**user_details)
 
@@ -143,7 +153,9 @@ class PublicUserApiTests(TestCase):
         payload = {
             'email': 'test@example.com',
             'password': '',
-            'name': 'Test name'
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
         }
         res = self.client.post(TOKEN_URL, payload)
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
@@ -170,7 +182,9 @@ class PrivateUserApiTests(TestCase):
         self.user = create_user(
             email='test@example.com',
             password='testpass123',
-            name='Test Name'
+            username='test_username',
+            first_name='Test First Name',
+            last_name='Test Last Name',
         )
         self.client = APIClient()
         self.client.force_authenticate(user=self.user)
@@ -184,8 +198,10 @@ class PrivateUserApiTests(TestCase):
 
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertEqual(res.data, {
-            'name': self.user.name,
-            'email': self.user.email
+            'username': self.user.username,
+            'email': self.user.email,
+            'first_name': self.user.first_name,
+            'last_name': self.user.last_name,
         })
 
     def test_post_me_not_allowed(self):
@@ -195,11 +211,14 @@ class PrivateUserApiTests(TestCase):
 
     def test_update_user_profile(self):
         """Test updating user profile for authenticated user"""
-        payload = {"name": "Updated Name", "password": "newpassword123"}
+        payload = {
+            "first_name": "Updated First Name",
+            "password": "newpassword123"
+        }
 
         res = self.client.patch(ME_URL, payload)
 
         self.user.refresh_from_db()
-        self.assertEqual(self.user.name, payload['name'])
+        self.assertEqual(self.user.first_name, payload['first_name'])
         self.assertTrue(self.user.check_password(payload['password']))
         self.assertEqual(res.status_code, status.HTTP_200_OK)

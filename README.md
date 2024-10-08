@@ -15,7 +15,7 @@ To run the code run `docker compose -f docker-compose-dev.yml up`
 _to do_
 
 ### Testing
-Ensure the `DEV` variable in the [compose file](docker-compose.yml) is set to true: `DEV=true`.
+Ensure the `DEV` variable in the [dev compose file](docker-compose-dev.yml) is set to true: `DEV=true`.
 
 * run flake8 in your docker container: `docker compose -f docker-compose-dev.yml run --rm app sh -c "flake8"`
 * run unit tests in your docker container: `docker compose -f docker-compose-dev.yml run --rm app sh -c "python manage.py test"`
