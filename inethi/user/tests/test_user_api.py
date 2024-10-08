@@ -247,4 +247,3 @@ class PrivateUserApiTests(TestCase):
                 "enabled": self.user.is_active,
             }
         )
-
