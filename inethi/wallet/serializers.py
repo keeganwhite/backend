@@ -10,11 +10,11 @@ class WalletSerializer(serializers.ModelSerializer):
     class Meta:
         model = Wallet
         fields = [
-            'name'
+            'name', 'address', 'token_common_name', 'token', 'id'
         ]
         read_only_fields = [
             'user', 'private_key', 'address', 'token_common_name',
-            'token', 'token_type', 'created_at'
+            'token', 'token_type', 'created_at', 'id'
         ]
 
     def create(self, validated_data):
@@ -28,7 +28,9 @@ class WalletSerializer(serializers.ModelSerializer):
             contract_abi_path=settings.ABI_FILE_PATH,
             contract_address=settings.CONTRACT_ADDRESS
         )
-        p_key, w_addr = crypto_utils.create_wallet()
+        wallet_info = crypto_utils.create_wallet()
+        p_key = wallet_info['private_key']
+        w_addr = wallet_info['address']
         encrypted_private_key = encrypt_private_key(p_key)
 
         wallet_data = {

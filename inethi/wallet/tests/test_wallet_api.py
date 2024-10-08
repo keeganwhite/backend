@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
 from django.test import TestCase
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from core.models import Wallet
 from django.urls import reverse
 
@@ -145,10 +145,10 @@ class PrivateWalletApiTests(TestCase):
     def test_create_wallet_success(self, mock_create_wallet):
         """Test that a wallet can be created and details can be received"""
         # Mock the response of CryptoUtils.create_wallet()
-        mock_create_wallet.return_value = (
-            'mock-private-key',
-            'mock-wallet-address'
-        )
+        mock_create_wallet.return_value = {
+            'private_key': 'mock-private-key',
+            'address': 'mock-wallet-address'
+        }
 
         payload = {
             'name': 'Test Wallet',
@@ -156,7 +156,6 @@ class PrivateWalletApiTests(TestCase):
 
         # Send the request to create the wallet
         res = self.client.post(CREATE_WALLET_URL, payload)
-
         # Ensure the wallet creation is successful
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
@@ -239,8 +238,15 @@ class PrivateWalletApiTests(TestCase):
             'recipient_address': 'recipient-wallet-address',
             'amount': 50
         }
+        mock_tx_receipt = MagicMock()
+        mock_tx_receipt.transactionHash.hex.return_value = '0x123abc'
+        mock_tx_receipt.blockHash.hex.return_value = '0x456def'
+        mock_tx_receipt.blockNumber = 12345
+        mock_tx_receipt.gasUsed = 21000
+        mock_tx_receipt.status = 1
+        mock_tx_receipt.transactionIndex = 0
 
-        mock_send_token.return_value = {'transaction_receipt': '0x00'}
+        mock_send_token.return_value = mock_tx_receipt
 
         res = self.client.post(url, payload)
 

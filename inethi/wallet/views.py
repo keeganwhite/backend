@@ -101,13 +101,23 @@ class WalletViewSet(viewsets.ModelViewSet):
                 recipient_address,
                 float(amount)
             )
+            tx_receipt_dict = {
+                'transactionHash': tx_receipt.transactionHash.hex(),
+                'blockHash': tx_receipt.blockHash.hex(),
+                'blockNumber': tx_receipt.blockNumber,
+                'gasUsed': tx_receipt.gasUsed,
+                'status': tx_receipt.status,
+                'transactionIndex': tx_receipt.transactionIndex
+            }
 
             return Response(
-                {'transaction_receipt': tx_receipt},
+                {'transaction_receipt': tx_receipt_dict},
                 status=status.HTTP_200_OK
             )
         except Exception as e:
+            print(e)
             return Response(
+
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )

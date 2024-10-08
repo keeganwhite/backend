@@ -39,7 +39,7 @@ class CryptoUtils:
         """Create a wallet on the blockchain."""
         account = self.w3.eth.account.create()
         return {
-            'private_key': account.privateKey.hex(),
+            'private_key': account._private_key.hex(),
             'address': account.address
         }
 
@@ -94,7 +94,7 @@ class CryptoUtils:
         )
 
         # Send the transaction and wait for the receipt
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         return self.w3.eth.wait_for_transaction_receipt(tx_hash)
 
     def balance_of(self, address: str) -> float:

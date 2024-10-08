@@ -110,3 +110,6 @@ class Wallet(models.Model):
     token = models.CharField(max_length=255, default='KRONE')
     token_type = models.CharField(max_length=255, default='ERC-20')
     created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.address
