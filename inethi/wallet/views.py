@@ -115,9 +115,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
         except Exception as e:
-            print(e)
             return Response(
-
                 {'error': str(e)},
                 status=status.HTTP_400_BAD_REQUEST
             )

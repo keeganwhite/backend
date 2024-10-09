@@ -29,4 +29,7 @@ urlpatterns = [
          name='api-docs'),
     path('api/v1/user/', include('user.urls')),
     path('api/v1/', include('wallet.urls', namespace='wallet')),
+    path('api/v1/', include(
+        'smart_contracts.urls', namespace='smart_contracts'
+    )),
 ]

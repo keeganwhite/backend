@@ -1,4 +1,6 @@
 import json
+
+import web3
 from cryptography.fernet import Fernet
 from web3 import Web3
 from django.conf import settings
@@ -31,9 +33,23 @@ def load_contract(abi_path: str, contract_address: str):
 
 class CryptoUtils:
     """Utility class for performing blockchain interactions"""
-    def __init__(self, contract_abi_path: str, contract_address: str):
+    def __init__(
+            self,
+            contract_abi_path: str,
+            contract_address: str,
+            registry: bool = False,
+            faucet: bool = False
+    ):
         self.w3 = Web3(Web3.HTTPProvider(settings.BLOCKCHAIN_PROVIDER_URL))
         self.contract = load_contract(contract_abi_path, contract_address)
+        if registry:
+            self.registry = load_contract(
+                settings.REGISTRY_ABI_FILE_PATH,
+                settings.REGISTRY_ADDRESS
+            )
+        else:
+            self.registry = None
+        self.faucet = None
 
     def create_wallet(self) -> dict:
         """Create a wallet on the blockchain."""
@@ -45,12 +61,13 @@ class CryptoUtils:
 
     def estimate_gas_for_transfer(
             self,
+            contract: web3.eth.Contract,
             from_address: str,
             to_address: str,
             token_amount: int
     ) -> int:
         """Estimate the gas required for a transfer."""
-        transfer_function = self.contract.functions.transfer(
+        transfer_function = contract.functions.transfer(
             to_address,
             token_amount
         )
@@ -102,3 +119,43 @@ class CryptoUtils:
         raw_balance = self.contract.functions.balanceOf(address).call()
         decimals = self.contract.functions.decimals().call()
         return raw_balance / (10**decimals)
+
+    def registry_add(self, private_key: str, address_to_add: str) -> TxReceipt:
+        """
+        Add an address to a registry using the private key
+        of the contract owner
+        """
+        account = self.w3.eth.account.from_key(private_key)
+        sender_address = account.address
+
+        nonce = self.w3.eth.get_transaction_count(sender_address)
+        gas_price = self.w3.eth.gas_price
+        gas_estimate = self.registry.functions.add(
+            address_to_add
+        ).estimate_gas({
+            'from': sender_address
+        })
+
+        tx = self.registry.functions.add(address_to_add).build_transaction({
+            'from': sender_address,
+            'nonce': nonce,
+            'gas': gas_estimate,
+            'gasPrice': gas_price,
+            'chainId': self.w3.eth.chain_id,
+        })
+
+        # Sign the transaction
+        signed_tx = self.w3.eth.account.sign_transaction(
+            tx, private_key=private_key
+        )
+
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        print(f"Transaction sent with hash: {tx_hash.hex()}")
+
+        # Wait for the transaction to be mined
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt:
+            print("Transaction receipt:", receipt)
+            return receipt
+        else:
+            raise Exception("Transaction failed")

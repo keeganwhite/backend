@@ -112,4 +112,79 @@ class Wallet(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
-        return self.address
+        return f"{self.user} at {self.address}"
+
+
+class SmartContract(models.Model):
+    """Smart Contract Object"""
+
+    name = models.CharField(max_length=255)
+    address = models.CharField(max_length=255, unique=True)
+    description = models.TextField(blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        blank=True,
+    )
+    write_access = models.BooleanField(default=False)
+    read_access = models.BooleanField(default=False)
+    contract_type = models.CharField(max_length=255)
+
+    class Meta:
+        verbose_name = 'Smart Contract'
+        verbose_name_plural = 'Smart Contracts'
+
+    def get_child_instance(self):
+        """This method returns the instance of the subclass if it exists"""
+        for subclass in self.__class__.__subclasses__():
+            if subclass.objects.filter(id=self.id).exists():
+                return subclass.objects.get(id=self.id)
+        return self  # Return self if no subclass instance is found
+
+    def __str__(self):
+        return f"{self.name} at {self.address}"
+
+
+class FaucetSmartContract(SmartContract):
+    """
+    Faucet Smart Contract Model that adds
+    method tracking functionality
+    """
+
+    gimme = models.BooleanField(default=False)
+    give_to = models.BooleanField(default=False)
+    next_balance = models.BooleanField(default=False)
+    next_time = models.BooleanField(default=False)
+    registry_address = models.CharField(max_length=255, blank=True)
+
+    class Meta:
+        verbose_name = 'Faucet Smart Contract'
+        verbose_name_plural = 'Faucet Smart Contracts'
+
+    def save(self, *args, **kwargs):
+        self.contract_type = 'eth faucet'
+        super().save(*args, **kwargs)
+
+
+class AccountsIndexContract(SmartContract):
+    """
+    Account Index smart contract model that adds
+    method tracking functionality
+    """
+
+    owner_address = models.CharField(max_length=255)
+    entry = models.BooleanField(default=False)
+    entry_count = models.BooleanField(default=False)
+    is_active = models.BooleanField(default=False)
+    activate = models.BooleanField(default=False)
+    deactivate = models.BooleanField(default=False)
+    add = models.BooleanField(default=False)
+    remove = models.BooleanField(default=False)
+
+    class Meta:
+        verbose_name = 'Account Index Smart Contract'
+        verbose_name_plural = 'Account Index Smart Contracts'
+
+    def save(self, *args, **kwargs):
+        self.contract_type = 'account index'
+        super().save(*args, **kwargs)

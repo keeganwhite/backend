@@ -181,4 +181,10 @@ SPECTACULAR_SETTINGS = {
     'COMPONENT_SPLIT_REQUEST': True,
 }
 
+# Smart contracts
+FAUCET_ABI_FILE_PATH = os.path.join(BASE_DIR, "contracts/faucet_abi.json")
+REGISTRY_ABI_FILE_PATH = os.path.join(BASE_DIR, "contracts/registry_abi.json")
+REGISTRY_ADDRESS = env("REGISTRY_ADDRESS")
 
+# owner of smart contracts
+ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS=env("ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS")
