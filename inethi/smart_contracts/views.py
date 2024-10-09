@@ -44,23 +44,24 @@ class SmartContractViewSet(viewsets.ModelViewSet):
 
     def get_serializer_class(self):
         if self.action == 'retrieve':
-            instance = self.get_object()
-            if isinstance(instance, FaucetSmartContract):
-                return FaucetSmartContractSerializer
-            elif isinstance(instance, AccountsIndexContract):
-                return AccountsIndexContractSerializer
-            else:
-                return SmartContractSerializer
+            if 'pk' in getattr(self, 'kwargs', {}):
+                instance = self.get_object()
+                if isinstance(instance, FaucetSmartContract):
+                    return FaucetSmartContractSerializer
+                elif isinstance(instance, AccountsIndexContract):
+                    return AccountsIndexContractSerializer
+            return SmartContractSerializer
         elif self.action == 'list':
             return SmartContractSerializer
         elif self.action in ['create', 'update', 'partial_update']:
-            contract_type = self.request.data.get('contract_type')
+            contract_type = self.request.data.get(
+                'contract_type'
+            ) if self.request else None
             if contract_type == 'eth faucet':
                 return FaucetSmartContractSerializer
             elif contract_type == 'account index':
                 return AccountsIndexContractSerializer
-            else:
-                return SmartContractSerializer
+            return SmartContractSerializer
         else:
             return SmartContractSerializer
 
