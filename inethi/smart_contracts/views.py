@@ -116,7 +116,10 @@ class SmartContractViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'], url_path='registry-add')
     def registry_add(self, request, pk=None):
-        """Call the add method for an account index"""
+        """
+        This endpoint allows an iNethi
+        Krone user to join the accounts index
+        """
         contract = SmartContract.objects.get(pk=pk)
         contract_type = contract.contract_type
 

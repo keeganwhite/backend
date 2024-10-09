@@ -149,7 +149,7 @@ class CryptoUtils:
             tx, private_key=private_key
         )
 
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
         print(f"Transaction sent with hash: {tx_hash.hex()}")
 
         # Wait for the transaction to be mined
