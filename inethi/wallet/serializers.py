@@ -1,6 +1,6 @@
 from rest_framework import serializers
 from core.models import Wallet
-from utils.crypto import CryptoUtils, encrypt_private_key
+from utils.crypto import CryptoUtils, encrypt_private_key, decrypt_private_key
 from django.conf import settings
 
 
@@ -20,7 +20,8 @@ class WalletSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         """
         Create a new wallet, generate private key,
-        encrypt it, and set immutable fields
+        encrypt it, add it to the account index and
+        set immutable fields
         """
 
         # Use utility script to create wallet
@@ -29,6 +30,13 @@ class WalletSerializer(serializers.ModelSerializer):
             contract_address=settings.CONTRACT_ADDRESS
         )
         wallet_info = crypto_utils.create_wallet()
+
+        # Ensure wallet_info contains the expected keys
+        if 'private_key' not in wallet_info or 'address' not in wallet_info:
+            raise serializers.ValidationError(
+                "Wallet creation failed: missing keys in response"
+            )
+
         p_key = wallet_info['private_key']
         w_addr = wallet_info['address']
         encrypted_private_key = encrypt_private_key(p_key)
@@ -42,6 +50,17 @@ class WalletSerializer(serializers.ModelSerializer):
             'token': 'KRONE',
             'token_type': 'ERC-20',
         }
+
+        if settings.FAUCET_AND_INDEX_ENABLED:
+            # Add the wallet to the account index for Krone
+            account_index_creator = Wallet.objects.get(
+                address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
+            )
+            p_key = decrypt_private_key(account_index_creator.private_key)
+            crypto_utils.registry_add(
+                private_key=p_key,
+                address_to_add=w_addr,
+            )
 
         # Create the wallet
         return Wallet.objects.create(**wallet_data)

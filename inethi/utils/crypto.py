@@ -150,7 +150,6 @@ class CryptoUtils:
         )
 
         tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        print(f"Transaction sent with hash: {tx_hash.hex()}")
 
         # Wait for the transaction to be mined
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)

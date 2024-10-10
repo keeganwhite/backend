@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from rest_framework.test import APIClient
 from rest_framework import status
@@ -141,14 +142,50 @@ class PrivateWalletApiTests(TestCase):
         res = self.client.delete(url)
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
+    @patch('utils.crypto.CryptoUtils.registry_add')
     @patch('utils.crypto.CryptoUtils.create_wallet')
-    def test_create_wallet_success(self, mock_create_wallet):
-        """Test that a wallet can be created and details can be received"""
+    def test_create_wallet_success(
+            self,
+            mock_create_wallet,
+            mock_registry_add
+    ):
+        """
+        Test that a wallet can be created and
+        details can be received. The wallet
+        should also be added to the Krone
+        account index
+        """
+
+        mock_tx_receipt = {
+            'transactionHash': '0x123abc',
+            'blockHash': '0x456def',
+            'blockNumber': 12345,
+            'gasUsed': 21000,
+            'status': 1,
+            'transactionIndex': 0,
+        }
+        mock_registry_add.return_value = mock_tx_receipt
         # Mock the response of CryptoUtils.create_wallet()
         mock_create_wallet.return_value = {
             'private_key': 'mock-private-key',
             'address': 'mock-wallet-address'
         }
+
+        # Create admin wallet and user
+        admin_user = create_user(
+            email='admin@example.com',
+            password='password123',
+            username='admin_username',
+            first_name='Admin First Name',
+            last_name='Admin Last Name',
+        )
+        p_key_admin = encrypt_private_key('admin_encrypted_private_key')
+        Wallet.objects.create(
+            user=admin_user,
+            name='Admin Wallet',
+            private_key=p_key_admin,
+            address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
 
         payload = {
             'name': 'Test Wallet',
@@ -156,6 +193,7 @@ class PrivateWalletApiTests(TestCase):
 
         # Send the request to create the wallet
         res = self.client.post(CREATE_WALLET_URL, payload)
+
         # Ensure the wallet creation is successful
         self.assertEqual(res.status_code, status.HTTP_201_CREATED)
 
