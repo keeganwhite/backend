@@ -49,7 +49,11 @@ class CryptoUtils:
             )
         else:
             self.registry = None
-        self.faucet = None
+        if faucet:
+            self.faucet = load_contract(
+                settings.FAUCET_ABI_FILE_PATH,
+                settings.FAUCET_ADDRESS
+            )
 
     def create_wallet(self) -> dict:
         """Create a wallet on the blockchain."""
@@ -119,6 +123,57 @@ class CryptoUtils:
         raw_balance = self.contract.functions.balanceOf(address).call()
         decimals = self.contract.functions.decimals().call()
         return raw_balance / (10**decimals)
+
+    def faucet_give_to(
+            self,
+            private_key: str,
+            give_to_address: str
+    ) -> TxReceipt:
+        """Give tokens to an address registered in the account index"""
+        account = self.w3.eth.account.from_key(private_key)
+        sender_address = account.address
+
+        nonce = self.w3.eth.get_transaction_count(sender_address)
+        gas_price = self.w3.eth.gas_price
+
+        gas_estimate = self.faucet.functions.giveTo(
+            give_to_address
+        ).estimate_gas({
+            'from': sender_address
+        })
+
+        tx = self.faucet.functions.giveTo(
+            give_to_address
+        ).build_transaction(
+            {
+                'from': sender_address,
+                'nonce': nonce,
+                'gas': gas_estimate,
+                'gasPrice': gas_price,
+                'chainId': self.w3.eth.chain_id,
+            }
+        )
+
+        # Sign the transaction
+        signed_tx = self.w3.eth.account.sign_transaction(
+            tx,
+            private_key=private_key
+        )
+
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+
+        # Wait for the transaction to be mined
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        if receipt:
+            print("Transaction receipt:", receipt)
+            return receipt
+        else:
+            raise Exception("Transaction failed")
+
+    def account_index_check_active(self, address_to_check: str) -> bool:
+        """Check if an address is active on the account index."""
+        active = self.registry.functions.isActive(address_to_check).call()
+        return active
 
     def registry_add(self, private_key: str, address_to_add: str) -> TxReceipt:
         """

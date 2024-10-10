@@ -31,6 +31,7 @@ class SmartContractViewSet(viewsets.ModelViewSet):
         contract_abi_path=settings.ABI_FILE_PATH,
         contract_address=settings.CONTRACT_ADDRESS,
         registry=settings.FAUCET_AND_INDEX_ENABLED,
+        faucet=settings.FAUCET_AND_INDEX_ENABLED,
     )
 
     def get_permissions(self):
@@ -186,9 +187,98 @@ class SmartContractViewSet(viewsets.ModelViewSet):
                 data={'transaction_receipt': receipt_data},
             )
 
+        else:
+            return Response(
+                {'error': 'No wallet found for the provided user.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='faucet-give-to',
+        permission_classes=[IsAdminUser]
+    )
+    def faucet_give_to(self, request, pk=None):
+        """Send tokens to an address from a faucet"""
+        contract = SmartContract.objects.get(pk=pk)
+
+        # Make sure the user has admin privileges first
+        if not request.user.is_staff:
+            return Response(
+                {
+                    'error':
+                        'You do not have permission to perform this action.'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        contract_type = contract.contract_type
+
+        if contract_type != 'eth faucet':
+            return Response(
+                {
+                    'contract_type':
+                        'You cannot giveTo for this type of contract.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        faucet_contract = FaucetSmartContract.objects.get(pk=pk)
+        give_to_function = faucet_contract.give_to
+        owner_addr = faucet_contract.owner_address
+
+        if not give_to_function:
+            return Response(
+                {
+                    'error':
+                        'There is no giveTo function for this smart contract.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if (not contract.write_access or
+                owner_addr != settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS):
+            return Response(
+                {'error': 'This is not an iNethi smart contract.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        user_wallet_addr = request.data['address']
+        wallet_exists = Wallet.objects.filter(
+            address=user_wallet_addr
+        ).exists()
+
+        if wallet_exists:
+            wallet = Wallet.objects.get(
+                address=user_wallet_addr
+            )
+            give_to_addr = wallet.address
+
+            faucet_creator = Wallet.objects.get(
+                address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
+            )
+            p_key = decrypt_private_key(faucet_creator.private_key)
+
+            receipt = self.c_utils.faucet_give_to(
+                private_key=p_key,
+                give_to_address=give_to_addr,
+            )
+
+            if isinstance(receipt, dict):
+                receipt_data = receipt
+            else:
+                receipt_data = {
+                    'transactionHash': receipt.transactionHash.hex(),
+                    'blockHash': receipt.blockHash.hex(),
+                    'blockNumber': receipt.blockNumber,
+                    'gasUsed': receipt.gasUsed,
+                    'status': receipt.status,
+                    'transactionIndex': receipt.transactionIndex,
+                }
+
             return Response(
                 status=status.HTTP_200_OK,
-                data={'transaction_receipt': receipt},
+                data={'transaction_receipt': receipt_data},
             )
 
         else:

@@ -55,6 +55,7 @@ class FaucetSmartContractSerializer(BaseSmartContractSerializer):
     class Meta(BaseSmartContractSerializer.Meta):
         model = FaucetSmartContract
         fields = BaseSmartContractSerializer.Meta.fields + [
+            'owner_address',
             'gimme',
             'give_to',
             'next_balance',

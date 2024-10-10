@@ -34,8 +34,10 @@ jobs:
           echo "BLOCKCHAIN_PROVIDER_URL=https://forno.celo.org" >> .env
           echo "CONTRACT_ADDRESS=0x8Bab657c88eb3c724486D113E650D2c659aa23d2" >> .env
           echo "REGISTRY_ADDRESS=0x9b1a3F8FadD0dc86FBae5Cf66Fa682fDcd84a9b0" >> .env
+          echo "FAUCET_ADDRESS="0xB821E49ADB53F0AbeD834278d5dFc57901c30Eea" >> .env
           echo "ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS=<SMART_CONTRACT_CREATOR>" >> .env
           echo "FAUCET_AND_INDEX_ENABLED=True" >> .env
+          echo "FAUCET_ADMIN_WALLET_ADDRESS=<SMART_CONTRACT_CREATOR>" >> .env
       - name: Lint
         run: docker compose -f docker-compose-dev.yml run --rm app sh -c "flake8"
       - name: Tests

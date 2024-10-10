@@ -151,6 +151,7 @@ class FaucetSmartContract(SmartContract):
     method tracking functionality
     """
 
+    owner_address = models.CharField(max_length=255)
     gimme = models.BooleanField(default=False)
     give_to = models.BooleanField(default=False)
     next_balance = models.BooleanField(default=False)

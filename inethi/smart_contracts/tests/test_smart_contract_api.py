@@ -34,6 +34,14 @@ def registry_add_url(smart_contract_id):
     )
 
 
+def faucet_give_to_url(smart_contract_id):
+    """Return URL for the faucet give to action"""
+    return reverse(
+        'smartcontract:smartcontract-faucet-give-to',
+        args=[smart_contract_id]
+    )
+
+
 def create_user(**params):
     """Helper function to create a user"""
     return get_user_model().objects.create_user(**params)
@@ -278,6 +286,23 @@ class PrivateSmartContractApiTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn('error', res.data)
 
+    def test_fail_not_admin_give_to(self):
+        """Test that non-admin cannot call give to"""
+        faucet_contract = FaucetSmartContract.objects.create(
+            user=self.user,
+            name='Test Faucet',
+            address='0xfaucetaddress',
+            description='Test Faucet Description',
+            write_access=True,
+            read_access=True,
+            contract_type='eth faucet',
+            give_to=True,
+        )
+        url = faucet_give_to_url(faucet_contract.id)
+        payload = {'address': '0xgivetoaddress'}
+        res = self.client.post(url, payload)
+        self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
 
 class AdminSmartContractApiTests(TestCase):
     """Test admin-only smart contract API access"""
@@ -304,6 +329,7 @@ class AdminSmartContractApiTests(TestCase):
         """Test creating a smart contract as admin"""
         payload = {
             'name': 'Admin Contract',
+            'owner_address': settings.FAUCET_ADMIN_WALLET_ADDRESS,
             'address': '0xadmincontractaddress',
             'description': 'Created by admin',
             'write_access': True,
@@ -340,3 +366,66 @@ class AdminSmartContractApiTests(TestCase):
 
         exists = SmartContract.objects.filter(id=smart_contract.id).exists()
         self.assertFalse(exists)
+
+    @patch('utils.crypto.CryptoUtils.faucet_give_to')
+    def test_registry_add_success(
+            self,
+            mock_faucet_give_to
+    ):
+        """
+        Test successful faucet give to action
+        for account in the account index
+        """
+        mock_tx_receipt = {
+            'transactionHash': '0x123abc',
+            'blockHash': '0x456def',
+            'blockNumber': 12345,
+            'gasUsed': 21000,
+            'status': 1,
+            'transactionIndex': 0,
+        }
+
+        mock_faucet_give_to.return_value = mock_tx_receipt
+
+        # Create a faucet smart contract with 'give_to' function enabled
+        faucet_contract = FaucetSmartContract.objects.create(
+            user=self.admin_user,
+            name='Test Faucet',
+            address='0xABCDEFabcdefabcd',
+            description='Test Faucet Description',
+            write_access=True,
+            read_access=True,
+            contract_type='eth faucet',
+            give_to=True,
+            owner_address=settings.FAUCET_ADMIN_WALLET_ADDRESS,
+        )
+
+        test_user = create_user(
+            email='test@example.com',
+            password='password123',
+            username='test_username',
+            first_name='Test First Name',
+            last_name='Test Last Name',
+        )
+
+        wallet = Wallet.objects.create(
+            user=test_user,
+            name='Test Wallet',
+            private_key='encrypted_private_key',
+            address='0xuserwalletaddress',
+        )
+
+        p_key_admin = encrypt_private_key(self.admin_user.password)
+        Wallet.objects.create(
+            user=self.admin_user,
+            name='Admin Wallet',
+            private_key=p_key_admin,
+            address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+        url = faucet_give_to_url(faucet_contract.id)
+        payload = {'address': wallet.address}
+
+        res = self.client.post(url, payload)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('transaction_receipt', res.data)
+        self.assertEqual(res.data['transaction_receipt'], mock_tx_receipt)
