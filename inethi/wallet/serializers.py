@@ -28,7 +28,8 @@ class WalletSerializer(serializers.ModelSerializer):
         crypto_utils = CryptoUtils(
             contract_abi_path=settings.ABI_FILE_PATH,
             contract_address=settings.CONTRACT_ADDRESS,
-            registry=settings.FAUCET_AND_INDEX_ENABLED
+            registry=settings.FAUCET_AND_INDEX_ENABLED,
+            faucet=settings.FAUCET_AND_INDEX_ENABLED,
         )
         wallet_info = crypto_utils.create_wallet()
 
@@ -61,6 +62,15 @@ class WalletSerializer(serializers.ModelSerializer):
             crypto_utils.registry_add(
                 private_key=p_key,
                 address_to_add=w_addr,
+            )
+            # send the account gas
+            faucet_creator = Wallet.objects.get(
+                address=settings.FAUCET_ADMIN_WALLET_ADDRESS
+            )
+            p_key = decrypt_private_key(faucet_creator.private_key)
+            crypto_utils.faucet_give_to(
+                private_key=p_key,
+                give_to_address=w_addr
             )
 
         # Create the wallet

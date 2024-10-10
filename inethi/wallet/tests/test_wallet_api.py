@@ -142,12 +142,14 @@ class PrivateWalletApiTests(TestCase):
         res = self.client.delete(url)
         self.assertEqual(res.status_code, status.HTTP_404_NOT_FOUND)
 
+    @patch('utils.crypto.CryptoUtils.faucet_give_to')
     @patch('utils.crypto.CryptoUtils.registry_add')
     @patch('utils.crypto.CryptoUtils.create_wallet')
     def test_create_wallet_success(
             self,
             mock_create_wallet,
-            mock_registry_add
+            mock_registry_add,
+            mock_faucet_give_to
     ):
         """
         Test that a wallet can be created and
@@ -165,6 +167,8 @@ class PrivateWalletApiTests(TestCase):
             'transactionIndex': 0,
         }
         mock_registry_add.return_value = mock_tx_receipt
+        mock_faucet_give_to.return_value = mock_tx_receipt
+
         # Mock the response of CryptoUtils.create_wallet()
         mock_create_wallet.return_value = {
             'private_key': 'mock-private-key',
