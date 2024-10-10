@@ -95,7 +95,6 @@ class WalletViewSet(viewsets.ModelViewSet):
                 wallet.private_key
             )
             # Send tokens using CryptoUtils
-
             tx_receipt = crypto_utils.send_to_wallet_address(
                 wallet.address,
                 decrypted_private_key,

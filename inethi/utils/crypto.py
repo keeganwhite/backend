@@ -114,9 +114,9 @@ class CryptoUtils:
         # Calculate token amount adjusted for decimals
         decimals = self.contract.functions.decimals().call()
         token_amount = int(amount * (10**decimals))
-
         # Estimate gas and get current gas price
         gas = self.estimate_gas_for_transfer(
+            self.contract,
             from_address,
             to_address,
             token_amount
@@ -175,7 +175,6 @@ class CryptoUtils:
         receipt = self.complete_transaction(private_key, tx)
 
         if receipt:
-            print("Transaction receipt:", receipt)
             return receipt
         else:
             raise Exception("Transaction failed")
@@ -211,7 +210,6 @@ class CryptoUtils:
 
         receipt = self.complete_transaction(private_key, tx)
         if receipt:
-            print("Transaction receipt:", receipt)
             return receipt
         else:
             raise Exception("Transaction failed")
