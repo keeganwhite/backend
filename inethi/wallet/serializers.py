@@ -27,7 +27,8 @@ class WalletSerializer(serializers.ModelSerializer):
         # Use utility script to create wallet
         crypto_utils = CryptoUtils(
             contract_abi_path=settings.ABI_FILE_PATH,
-            contract_address=settings.CONTRACT_ADDRESS
+            contract_address=settings.CONTRACT_ADDRESS,
+            registry=settings.FAUCET_AND_INDEX_ENABLED
         )
         wallet_info = crypto_utils.create_wallet()
 

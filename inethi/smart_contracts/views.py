@@ -30,7 +30,7 @@ class SmartContractViewSet(viewsets.ModelViewSet):
     c_utils = CryptoUtils(
         contract_abi_path=settings.ABI_FILE_PATH,
         contract_address=settings.CONTRACT_ADDRESS,
-        registry=True
+        registry=settings.FAUCET_AND_INDEX_ENABLED,
     )
 
     def get_permissions(self):

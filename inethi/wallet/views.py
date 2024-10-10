@@ -87,7 +87,8 @@ class WalletViewSet(viewsets.ModelViewSet):
         try:
             crypto_utils = CryptoUtils(
                 contract_abi_path=settings.ABI_FILE_PATH,
-                contract_address=settings.CONTRACT_ADDRESS
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
             )
             # Decrypt the private key
             decrypted_private_key = utils.crypto.decrypt_private_key(
