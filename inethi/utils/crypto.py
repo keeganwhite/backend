@@ -2,6 +2,7 @@ import json
 
 import web3
 from cryptography.fernet import Fernet
+
 from web3 import Web3
 from django.conf import settings
 from web3.types import TxReceipt
@@ -63,6 +64,28 @@ class CryptoUtils:
             'address': account.address
         }
 
+    def complete_transaction(
+            self,
+            private_key: str,
+            transaction: dict
+    ) -> TxReceipt:
+        """
+        Sign, hash and get transaction receipt.
+        ---
+        Required fields:
+        - private_key: decrypted private key to sign transaction
+        - transaction: transaction to sign
+        returns receipt of transaction
+        """
+        signed_tx = self.w3.eth.account.sign_transaction(
+            transaction,
+            private_key=private_key
+        )
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+        # Wait for the transaction to be mined
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        return receipt
+
     def estimate_gas_for_transfer(
             self,
             contract: web3.eth.Contract,
@@ -109,14 +132,9 @@ class CryptoUtils:
             'gasPrice': gas_price,
             'nonce': nonce,
         })
-        signed_tx = self.w3.eth.account.sign_transaction(
-            tx,
-            private_key  # decrypted private key
-        )
 
-        # Send the transaction and wait for the receipt
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-        return self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        receipt = self.complete_transaction(private_key, tx)
+        return receipt
 
     def balance_of(self, address: str) -> float:
         """Check the balance of a wallet."""
@@ -154,16 +172,8 @@ class CryptoUtils:
             }
         )
 
-        # Sign the transaction
-        signed_tx = self.w3.eth.account.sign_transaction(
-            tx,
-            private_key=private_key
-        )
+        receipt = self.complete_transaction(private_key, tx)
 
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-
-        # Wait for the transaction to be mined
-        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
         if receipt:
             print("Transaction receipt:", receipt)
             return receipt
@@ -199,15 +209,7 @@ class CryptoUtils:
             'chainId': self.w3.eth.chain_id,
         })
 
-        # Sign the transaction
-        signed_tx = self.w3.eth.account.sign_transaction(
-            tx, private_key=private_key
-        )
-
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
-
-        # Wait for the transaction to be mined
-        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        receipt = self.complete_transaction(private_key, tx)
         if receipt:
             print("Transaction receipt:", receipt)
             return receipt
