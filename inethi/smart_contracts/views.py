@@ -200,7 +200,12 @@ class SmartContractViewSet(viewsets.ModelViewSet):
         permission_classes=[IsAdminUser]
     )
     def faucet_give_to(self, request, pk=None):
-        """Send tokens to an address from a faucet"""
+        """
+        Send tokens to an address from a faucet
+        ---
+        Required fields:
+        - address: The wallet address to send tokens to.
+        """
         contract = SmartContract.objects.get(pk=pk)
 
         # Make sure the user has admin privileges first

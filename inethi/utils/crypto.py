@@ -160,7 +160,7 @@ class CryptoUtils:
             private_key=private_key
         )
 
-        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.rawTransaction)
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
 
         # Wait for the transaction to be mined
         receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
