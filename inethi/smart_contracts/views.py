@@ -115,12 +115,28 @@ class SmartContractViewSet(viewsets.ModelViewSet):
         self.perform_update(serializer)
         return Response(serializer.data)
 
-    @action(detail=True, methods=['post'], url_path='registry-add')
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='registry-add',
+        permission_classes=[IsAdminUser]
+    )
     def registry_add(self, request, pk=None):
         """
         This endpoint allows an iNethi
         Krone user to join the accounts index
         """
+
+        # Make sure the user has admin privileges first
+        if not request.user.is_staff:
+            return Response(
+                {
+                    'error':
+                        'You do not have permission to perform this action.'
+                },
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+
         contract = SmartContract.objects.get(pk=pk)
         contract_type = contract.contract_type
 
@@ -152,13 +168,11 @@ class SmartContractViewSet(viewsets.ModelViewSet):
 
         user_wallet_addr = request.data['address']
         wallet_exists = Wallet.objects.filter(
-            user=request.user,
             address=user_wallet_addr
         ).exists()
 
         if wallet_exists:
             wallet = Wallet.objects.get(
-                user=request.user,
                 address=user_wallet_addr
             )
             add_address = wallet.address
@@ -291,3 +305,50 @@ class SmartContractViewSet(viewsets.ModelViewSet):
                 {'error': 'No wallet found for the provided user.'},
                 status=status.HTTP_400_BAD_REQUEST
             )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='registry-check-active',
+        permission_classes=[IsAuthenticated]
+    )
+    def registry_check_active(self, request, pk=None):
+        """
+        Check if a wallet address is active in an account index
+        ---
+        Required fields:
+        - address: The wallet address to check status.
+        """
+        contract = SmartContract.objects.get(pk=pk)
+        contract_type = contract.contract_type
+
+        if contract_type != 'account index':
+            return Response(
+                {
+                    'contract_type':
+                        'You cannot check active '
+                        'status for this contract type.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        account_index_contract = AccountsIndexContract.objects.get(pk=pk)
+        active_func = account_index_contract.is_active
+
+        if not active_func:
+            return Response(
+                {
+                    'error':
+                        'There is no isActive function '
+                        'for this smart contract.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        wallet_addr = request.data['address']
+        active = self.c_utils.account_index_check_active(wallet_addr)
+
+        return Response(
+            status=status.HTTP_200_OK,
+            data={'is_active': active},
+        )

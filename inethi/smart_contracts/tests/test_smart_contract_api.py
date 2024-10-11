@@ -4,6 +4,7 @@ from django.test import TestCase
 from django.conf import settings
 from rest_framework.test import APIClient
 from rest_framework import status
+
 from core.models import (
     SmartContract,
     FaucetSmartContract,
@@ -38,6 +39,14 @@ def faucet_give_to_url(smart_contract_id):
     """Return URL for the faucet give to action"""
     return reverse(
         'smartcontract:smartcontract-faucet-give-to',
+        args=[smart_contract_id]
+    )
+
+
+def registry_is_active_url(smart_contract_id):
+    """Return URL for the is_active action"""
+    return reverse(
+        'smartcontract:smartcontract-registry-check-active',
         args=[smart_contract_id]
     )
 
@@ -141,151 +150,6 @@ class PrivateSmartContractApiTests(TestCase):
         res = self.client.post(SMART_CONTRACT_URL, payload)
         self.assertEqual(res.status_code, status.HTTP_403_FORBIDDEN)
 
-    @patch('utils.crypto.CryptoUtils.registry_add')
-    def test_registry_add_success(
-            self,
-            mock_registry_add
-    ):
-        """Test successful registry_add action for account index contract"""
-        mock_tx_receipt = {
-            'transactionHash': '0x123abc',
-            'blockHash': '0x456def',
-            'blockNumber': 12345,
-            'gasUsed': 21000,
-            'status': 1,
-            'transactionIndex': 0,
-        }
-
-        mock_registry_add.return_value = mock_tx_receipt
-
-        # Create an account index smart contract with 'add' function enabled
-        account_index_contract = AccountsIndexContract.objects.create(
-            user=self.user,
-            name='Test Account Index',
-            address='0xabcdefabcdefabcd',
-            description='Test Account Index Description',
-            write_access=True,
-            read_access=True,
-            contract_type='account index',
-            add=True,  # Enable 'add' function
-            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
-        )
-
-        # Create a wallet for the user
-        wallet = Wallet.objects.create(
-            user=self.user,
-            name='Test Wallet',
-            private_key='encrypted_private_key',
-            address='0xuserwalletaddress',
-        )
-
-        admin_user = create_user(
-            email='admin@example.com',
-            password='password123',
-            username='admin_username',
-            first_name='Admin First Name',
-            last_name='Admin Last Name',
-        )
-        p_key_admin = encrypt_private_key('admin_encrypted_private_key')
-        Wallet.objects.create(
-            user=admin_user,
-            name='Admin Wallet',
-            private_key=p_key_admin,
-            address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
-        )
-
-        url = registry_add_url(account_index_contract.id)
-        payload = {'address': wallet.address}
-
-        res = self.client.post(url, payload)
-        self.assertEqual(res.status_code, status.HTTP_200_OK)
-        self.assertIn('transaction_receipt', res.data)
-        self.assertEqual(res.data['transaction_receipt'], mock_tx_receipt)
-
-    def test_registry_add_no_wallet(self):
-        """
-        Test registry_add fails when user
-        does not have the wallet address
-        """
-        # Create an account index smart contract
-        account_index_contract = AccountsIndexContract.objects.create(
-            user=self.user,
-            name='Test Account Index',
-            address='0xabcdefabcdefabcd',
-            description='Test Account Index Description',
-            write_access=True,
-            read_access=True,
-            contract_type='account index',
-            add=True,
-            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
-        )
-
-        url = registry_add_url(account_index_contract.id)
-        payload = {'address': '0xnonexistentwalletaddress'}
-        res = self.client.post(url, payload)
-
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', res.data)
-
-    def test_registry_add_invalid_contract_type(self):
-        """Test registry_add fails when contract type is not 'account index'"""
-        # Create a faucet smart contract
-        faucet_contract = FaucetSmartContract.objects.create(
-            user=self.user,
-            name='Test Faucet',
-            address='0xfaucetaddress',
-            description='Test Faucet Description',
-            write_access=True,
-            read_access=True,
-            contract_type='eth faucet',
-            gimme=True,
-        )
-
-        # Create a wallet for the user
-        wallet = Wallet.objects.create(
-            user=self.user,
-            name='Test Wallet',
-            private_key='encrypted_private_key',
-            address='0xuserwalletaddress',
-        )
-
-        url = registry_add_url(faucet_contract.id)
-        payload = {'address': wallet.address}
-        res = self.client.post(url, payload)
-
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('contract_type', res.data)
-
-    def test_registry_add_no_add_function(self):
-        """Test registry_add fails when 'add' function is not enabled"""
-        # Create an account index smart contract with 'add' function disabled
-        account_index_contract = AccountsIndexContract.objects.create(
-            user=self.user,
-            name='Test Account Index',
-            address='0xabcdefabcdefabcd',
-            description='Test Account Index Description',
-            write_access=True,
-            read_access=True,
-            contract_type='account index',
-            add=False,  # 'add' function disabled
-            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
-        )
-
-        # Create a wallet for the user
-        wallet = Wallet.objects.create(
-            user=self.user,
-            name='Test Wallet',
-            private_key='encrypted_private_key',
-            address='0xuserwalletaddress',
-        )
-
-        url = registry_add_url(account_index_contract.id)
-        payload = {'address': wallet.address}
-        res = self.client.post(url, payload)
-
-        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('error', res.data)
-
     def test_fail_not_admin_give_to(self):
         """Test that non-admin cannot call give to"""
         faucet_contract = FaucetSmartContract.objects.create(
@@ -302,6 +166,86 @@ class PrivateSmartContractApiTests(TestCase):
         payload = {'address': '0xgivetoaddress'}
         res = self.client.post(url, payload)
         self.assertEqual(res.status_code, status.HTTP_401_UNAUTHORIZED)
+
+    @patch('utils.crypto.CryptoUtils.account_index_check_active')
+    def test_registry_check_active(
+            self,
+            mock_account_index_check_active
+    ):
+        """
+        Test that the registry check method passes
+        with registered user
+        """
+        mock_account_index_check_active.return_value = True
+
+        account_index_contract = AccountsIndexContract.objects.create(
+            user=self.user,
+            name='Test Account Index',
+            address='0xabcdefabcdefabcd',
+            description='Test Account Index Description',
+            write_access=True,
+            read_access=True,
+            contract_type='account index',
+            add=True,
+            is_active=True,
+            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        private_key = encrypt_private_key('secret-key')
+        user_wallet = Wallet.objects.create(
+            user=self.user,
+            name='Test Wallet',
+            private_key=private_key,
+            address='0xabcdefabcdefabcd',
+        )
+
+        url = registry_is_active_url(account_index_contract.id)
+        payload = {
+            'address': user_wallet.address,
+        }
+
+        rsp = self.client.post(url, payload)
+
+        self.assertEqual(rsp.status_code, status.HTTP_200_OK)
+        self.assertEqual(account_index_contract.is_active, True)
+
+    def test_registry_fail_no_check_active(
+            self,
+    ):
+        """
+        Test that the registry check method fails
+        when no check_active function is present
+        """
+
+        account_index_contract = AccountsIndexContract.objects.create(
+            user=self.user,
+            name='Test Account Index',
+            address='0xabcdefabcdefabcd',
+            description='Test Account Index Description',
+            write_access=True,
+            read_access=True,
+            contract_type='account index',
+            add=True,
+            is_active=False,
+            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        private_key = encrypt_private_key('secret-key')
+        user_wallet = Wallet.objects.create(
+            user=self.user,
+            name='Test Wallet',
+            private_key=private_key,
+            address='0xabcdefabcdefabcd',
+        )
+
+        url = registry_is_active_url(account_index_contract.id)
+        payload = {
+            'address': user_wallet.address,
+        }
+
+        rsp = self.client.post(url, payload)
+
+        self.assertEqual(rsp.status_code, status.HTTP_400_BAD_REQUEST)
 
 
 class AdminSmartContractApiTests(TestCase):
@@ -324,6 +268,168 @@ class AdminSmartContractApiTests(TestCase):
         self.client.force_authenticate(self.admin_user)
 
         self.addCleanup(patcher.stop)
+
+    @patch('utils.crypto.CryptoUtils.registry_add')
+    def test_registry_add_success(
+            self,
+            mock_registry_add
+    ):
+        """Test successful registry_add action for account index contract"""
+        mock_tx_receipt = {
+            'transactionHash': '0x123abc',
+            'blockHash': '0x456def',
+            'blockNumber': 12345,
+            'gasUsed': 21000,
+            'status': 1,
+            'transactionIndex': 0,
+        }
+
+        mock_registry_add.return_value = mock_tx_receipt
+
+        # Create an account index smart contract with 'add' function enabled
+        account_index_contract = AccountsIndexContract.objects.create(
+            user=self.admin_user,
+            name='Test Account Index',
+            address='0xabcdefabcdefabcd',
+            description='Test Account Index Description',
+            write_access=True,
+            read_access=True,
+            contract_type='account index',
+            add=True,  # Enable 'add' function
+            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        test_user = create_user(
+            email='user@example.com',
+            password='password123',
+            username='user_username',
+            first_name='user First Name',
+            last_name='user Last Name',
+        )
+
+        # Create a wallet for the user
+        wallet = Wallet.objects.create(
+            user=test_user,
+            name='Test Wallet',
+            private_key='encrypted_private_key',
+            address='0xuserwalletaddress',
+        )
+
+        p_key_admin = encrypt_private_key('admin_encrypted_private_key')
+        Wallet.objects.create(
+            user=self.admin_user,
+            name='Admin Wallet',
+            private_key=p_key_admin,
+            address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        url = registry_add_url(account_index_contract.id)
+        payload = {'address': wallet.address}
+
+        res = self.client.post(url, payload)
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('transaction_receipt', res.data)
+        self.assertEqual(res.data['transaction_receipt'], mock_tx_receipt)
+
+    def test_registry_add_no_wallet(self):
+        """
+        Test registry_add fails when user
+        does not have the wallet address
+        """
+        # Create an account index smart contract
+        account_index_contract = AccountsIndexContract.objects.create(
+            user=self.admin_user,
+            name='Test Account Index',
+            address='0xabcdefabcdefabcd',
+            description='Test Account Index Description',
+            write_access=True,
+            read_access=True,
+            contract_type='account index',
+            add=True,
+            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        url = registry_add_url(account_index_contract.id)
+        payload = {'address': '0xnonexistentwalletaddress'}
+        res = self.client.post(url, payload)
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res.data)
+
+    def test_registry_add_invalid_contract_type(self):
+        """Test registry_add fails when contract type is not 'account index'"""
+        # Create a faucet smart contract
+        faucet_contract = FaucetSmartContract.objects.create(
+            user=self.admin_user,
+            name='Test Faucet',
+            address='0xfaucetaddress',
+            description='Test Faucet Description',
+            write_access=True,
+            read_access=True,
+            contract_type='eth faucet',
+            gimme=True,
+        )
+
+        user = create_user(
+            email='user@example.com',
+            password='password123',
+            username='user_username',
+            first_name='user First Name',
+            last_name='user Last Name',
+        )
+
+        # Create a wallet for the user
+        wallet = Wallet.objects.create(
+            user=user,
+            name='Test Wallet',
+            private_key='encrypted_private_key',
+            address='0xuserwalletaddress',
+        )
+
+        url = registry_add_url(faucet_contract.id)
+        payload = {'address': wallet.address}
+        res = self.client.post(url, payload)
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('contract_type', res.data)
+
+    def test_registry_add_no_add_function(self):
+        """Test registry_add fails when 'add' function is not enabled"""
+        # Create an account index smart contract with 'add' function disabled
+        account_index_contract = AccountsIndexContract.objects.create(
+            user=self.admin_user,
+            name='Test Account Index',
+            address='0xabcdefabcdefabcd',
+            description='Test Account Index Description',
+            write_access=True,
+            read_access=True,
+            contract_type='account index',
+            add=False,  # 'add' function disabled
+            owner_address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        user = create_user(
+            email='user@example.com',
+            password='password123',
+            username='user_username',
+            first_name='user First Name',
+            last_name='user Last Name',
+        )
+
+        # Create a wallet for the user
+        wallet = Wallet.objects.create(
+            user=user,
+            name='Test Wallet',
+            private_key='encrypted_private_key',
+            address='0xuserwalletaddress',
+        )
+
+        url = registry_add_url(account_index_contract.id)
+        payload = {'address': wallet.address}
+        res = self.client.post(url, payload)
+
+        self.assertEqual(res.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn('error', res.data)
 
     def test_create_smart_contract(self):
         """Test creating a smart contract as admin"""
@@ -368,7 +474,7 @@ class AdminSmartContractApiTests(TestCase):
         self.assertFalse(exists)
 
     @patch('utils.crypto.CryptoUtils.faucet_give_to')
-    def test_registry_add_success(
+    def test_faucet_give_to(
             self,
             mock_faucet_give_to
     ):
