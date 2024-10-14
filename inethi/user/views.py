@@ -6,13 +6,16 @@ from keycloak.exceptions import (
     KeycloakConnectionError,
     KeycloakError
 )
+from rest_framework import serializers
 from rest_framework import generics, permissions, status
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.exceptions import ValidationError
+
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
 
 from django.conf import settings
+from rest_framework.views import APIView
 
 from utils.keycloak import KeycloakAuthentication
 from .serializers import (
@@ -76,10 +79,30 @@ class CreateTokenView(ObtainAuthToken):
             )
 
         keycloak_token = serializer.validated_data.get('token')
+        refresh_token = serializer.validated_data.get('refresh_token')
+        expires_in = serializer.validated_data.get('expires_in')
         # Return response based on the type of authentication
         return Response({
-            'token': keycloak_token,  # Keycloak token (access token)
+            'token': keycloak_token,
+            'refresh_token': refresh_token,
+            'expires_in': expires_in
         }, status=status.HTTP_200_OK)
+
+
+class RefreshTokenView(APIView):
+    """View to refresh the access token"""
+    serializer = KeycloakAuthTokenSerializer()
+
+    def post(self, request, *args, **kwargs):
+        refresh_token = request.data.get('refresh_token')
+        if not refresh_token:
+            return Response({'detail': 'Refresh token required.'}, status=400)
+
+        try:
+            token_data = self.serializer.refresh_token_if_needed(refresh_token)
+            return Response(token_data, status=200)
+        except serializers.ValidationError as e:
+            return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
 
 class ManageUserView(generics.RetrieveUpdateAPIView):

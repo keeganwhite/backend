@@ -58,6 +58,8 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
         token = attrs.get('token')
         email = attrs.get('email')
         password = attrs.get('password')
+        expires_in = attrs.get('expires_in')
+        refresh_token = attrs.get('refresh_token')
         try:
             # Handle Keycloak token authentication
             keycloak_openid = KEYCLOAK_OPENID
@@ -70,6 +72,8 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
                 )
                 # Extract the access token from the response
                 token = token_response.get('access_token')
+                refresh_token = token_response.get('refresh_token')
+                expires_in = token_response.get('expires_in')
             if token:
                 # Verify token and introspect its validity
                 user_info = keycloak_openid.userinfo(token)
@@ -88,6 +92,8 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
                         code='authentication'
                     )
 
+                attrs['refresh_token'] = refresh_token
+                attrs['expires_in'] = expires_in
                 attrs['user'] = user
                 attrs['token'] = token
                 return attrs
@@ -115,4 +121,22 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 {'detail': f'Invalid credentials: {str(e)}'},
                 code=400
+            )
+
+    def refresh_token_if_needed(self, refresh_token):
+        """Refresh Keycloak token"""
+        try:
+            keycloak_openid = KEYCLOAK_OPENID
+            refreshed_token_response = keycloak_openid.refresh_token(
+                refresh_token
+            )
+            return {
+                'access_token': refreshed_token_response.get('access_token'),
+                'refresh_token': refreshed_token_response.get('refresh_token'),
+                'expires_in': refreshed_token_response.get('expires_in')
+            }
+
+        except KeycloakError as e:
+            raise serializers.ValidationError(
+                f'Failed to refresh token: {str(e)}'
             )
