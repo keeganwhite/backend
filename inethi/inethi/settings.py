@@ -14,7 +14,10 @@ import os
 from pathlib import Path
 import environ
 from keycloak import KeycloakOpenID, KeycloakOpenIDConnection, KeycloakAdmin
-env = environ.Env()
+env = environ.Env(
+    ALLOWED_HOSTS=(list, []),
+    CSRF_TRUSTED_ORIGINS=(list, []),
+)
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -30,8 +33,8 @@ SECRET_KEY = 'django-insecure-kua1-cpzbd+@+^n!_hh*(vjz)8r(qob2!5gg(d&&dqj0gu!exq
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
-
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
+CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS')
 
 # Application definition
 

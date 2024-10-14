@@ -352,3 +352,192 @@ class SmartContractViewSet(viewsets.ModelViewSet):
             status=status.HTTP_200_OK,
             data={'is_active': active},
         )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='faucet-gimme',
+        permission_classes=[IsAuthenticated]
+    )
+    def faucet_gimme(self, request, pk=None):
+        """Ask for gas from the faucet"""
+        contract = SmartContract.objects.get(pk=pk)
+        contract_type = contract.contract_type
+
+        if contract_type != 'eth faucet':
+            return Response(
+                {
+                    'error':
+                        'No gimme function for this contract type.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        eth_faucet = FaucetSmartContract.objects.get(pk=pk)
+        gimme_func = eth_faucet.gimme
+
+        if not gimme_func:
+            return Response(
+                {
+                    'error':
+                        'There is no gimme function for this smart contract.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        wallet_exists = Wallet.objects.filter(user=request.user).exists()
+        if wallet_exists:
+            try:
+                wallet = Wallet.objects.get(user=request.user)
+                address = wallet.address
+
+                decrypted_private_key = decrypt_private_key(
+                    wallet.private_key
+                )
+
+                gimme_rsp = self.c_utils.faucet_gimme(
+                    decrypted_private_key,
+                    address
+                )
+                print(f'Gimme rsp: {gimme_rsp}')
+                if gimme_rsp['success']:
+                    return Response(
+                        {
+                            'amount': gimme_rsp['amount']
+                         },
+                        status=status.HTTP_200_OK
+                    )
+                # order matters
+                elif gimme_rsp['time_check']:
+                    return Response(
+                        {
+                            'error':
+                                f'you have to wait until {gimme_rsp["time"]}'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                elif gimme_rsp['faucet_thresh']:
+                    return Response(
+                        {
+                            'error':
+                                f'Your balance needs to be below '
+                                f'{gimme_rsp["threshold"]}'
+                        },
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+
+            except Exception as e:
+                return Response(
+                    {
+                      'error': f'Failed to call gimme: {e}.'
+                    },
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                )
+
+        else:
+            return Response(
+                {'error': 'No wallet found for this user.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='faucet-next-time',
+        permission_classes=[IsAuthenticated]
+    )
+    def faucet_next_time(self, request, pk=None):
+        """Check the time until you can request again"""
+        contract = SmartContract.objects.get(pk=pk)
+        contract_type = contract.contract_type
+
+        if contract_type != 'eth faucet':
+            return Response(
+                {
+                    'error':
+                        'No nextTime function for this contract type.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        eth_faucet = FaucetSmartContract.objects.get(pk=pk)
+        next_time = eth_faucet.next_time
+
+        if not next_time:
+            return Response(
+                {
+                    'error':
+                        'There is no nextTime function '
+                        'for this smart contract.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        wallet_exists = Wallet.objects.filter(user=request.user).exists()
+        if wallet_exists:
+            wallet = Wallet.objects.get(user=request.user)
+            address = wallet.address
+
+            get_next_time = self.c_utils.faucet_check_time(address)
+            return Response(
+                {
+                    'can_request': get_next_time['is_older'],
+                    'time_stamp': get_next_time['time_stamp'],
+                },
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {'error': 'No wallet found for this user.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(
+        detail=True,
+        methods=['post'],
+        url_path='faucet-balance',
+        permission_classes=[IsAuthenticated]
+    )
+    def faucet_balance(self, request, pk=None):
+        """Check what the balance threshold is."""
+        contract = SmartContract.objects.get(pk=pk)
+        contract_type = contract.contract_type
+
+        if contract_type != 'eth faucet':
+            return Response(
+                {
+                    'error':
+                        'No balance function for this contract type.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        eth_faucet = FaucetSmartContract.objects.get(pk=pk)
+        next_time = eth_faucet.next_balance
+
+        if not next_time:
+            return Response(
+                {
+                    'error':
+                        'There is no balance function for this smart contract.'
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        wallet_exists = Wallet.objects.filter(user=request.user).exists()
+        if wallet_exists:
+            wallet = Wallet.objects.get(user=request.user)
+            address = wallet.address
+
+            balance_thresh = self.c_utils.faucet_balance_threshold(address)
+            return Response(
+                {
+                    'amount': balance_thresh,
+                },
+                status=status.HTTP_200_OK
+            )
+        else:
+            return Response(
+                {'error': 'No wallet found for this user.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )

@@ -43,6 +43,22 @@ def faucet_give_to_url(smart_contract_id):
     )
 
 
+def faucet_next_time(smart_contract_id):
+    """Return URL for the faucet give to action"""
+    return reverse(
+        'smartcontract:smartcontract-faucet-next-time',
+        args=[smart_contract_id]
+    )
+
+
+def faucet_balance(smart_contract_id):
+    """Return URL for the faucet give to action"""
+    return reverse(
+        'smartcontract:smartcontract-faucet-balance',
+        args=[smart_contract_id]
+    )
+
+
 def registry_is_active_url(smart_contract_id):
     """Return URL for the is_active action"""
     return reverse(
@@ -535,3 +551,72 @@ class AdminSmartContractApiTests(TestCase):
         self.assertEqual(res.status_code, status.HTTP_200_OK)
         self.assertIn('transaction_receipt', res.data)
         self.assertEqual(res.data['transaction_receipt'], mock_tx_receipt)
+
+    @patch('utils.crypto.CryptoUtils.faucet_check_time')
+    def test_faucet_next_time(
+            self,
+            mock_faucet_next_time
+    ):
+        """Test successful faucet next time"""
+        mock_faucet_next_time.return_value = {
+                    'is_older': True,
+                    'time_stamp': 'Earlier Timestamp',
+                }
+
+        faucet_contract = FaucetSmartContract.objects.create(
+            user=self.admin_user,
+            name='Test Faucet',
+            address='0xABCDEFabcdefabcd',
+            description='Test Faucet Description',
+            write_access=True,
+            read_access=True,
+            contract_type='eth faucet',
+            next_time=True,
+            owner_address=settings.FAUCET_ADMIN_WALLET_ADDRESS,
+        )
+
+        p_key_admin = encrypt_private_key(self.admin_user.password)
+        Wallet.objects.create(
+            user=self.admin_user,
+            name='Admin Wallet',
+            private_key=p_key_admin,
+            address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        url = faucet_next_time(faucet_contract.id)
+        res = self.client.post(url, {})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)
+        self.assertIn('time_stamp', res.data)
+        self.assertEqual(res.data['can_request'], True)
+
+    @patch('utils.crypto.CryptoUtils.faucet_balance_threshold')
+    def test_faucet_balance(
+            self,
+            mock_faucet_balance
+    ):
+        """Test successful faucet balance"""
+        mock_faucet_balance.return_value = 1.1
+
+        faucet_contract = FaucetSmartContract.objects.create(
+            user=self.admin_user,
+            name='Test Faucet',
+            address='0xABCDEFabcdefabcd',
+            description='Test Faucet Description',
+            write_access=True,
+            read_access=True,
+            contract_type='eth faucet',
+            next_balance=True,
+            owner_address=settings.FAUCET_ADMIN_WALLET_ADDRESS,
+        )
+
+        p_key_admin = encrypt_private_key(self.admin_user.password)
+        Wallet.objects.create(
+            user=self.admin_user,
+            name='Admin Wallet',
+            private_key=p_key_admin,
+            address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS,
+        )
+
+        url = faucet_balance(faucet_contract.id)
+        res = self.client.post(url, {})
+        self.assertEqual(res.status_code, status.HTTP_200_OK)

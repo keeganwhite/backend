@@ -7,6 +7,15 @@ from web3 import Web3
 from django.conf import settings
 from web3.types import TxReceipt
 
+from datetime import datetime, timezone
+from django.utils import timezone as django_timezone
+
+
+def convert_wei_to_celo(wei_amount):
+    """Convert wei amount to celo"""
+    celo_amount = wei_amount / 1e18
+    return celo_amount
+
 
 def encrypt_private_key(private_key: str) -> str:
     """Fernet encrypt a private key."""
@@ -213,3 +222,100 @@ class CryptoUtils:
             return receipt
         else:
             raise Exception("Transaction failed")
+
+    def faucet_check_time(self, address_to_check: str) -> dict:
+        """Check if an address can receive funds at this time"""
+        next_time = self.faucet.functions.nextTime(
+            _subject=address_to_check
+        ).call({'from': address_to_check})
+
+        aware_utc_dt = datetime.fromtimestamp(next_time, tz=timezone.utc)
+        now = django_timezone.localtime(django_timezone.now())
+        local_dt = django_timezone.localtime(aware_utc_dt)
+        is_older = local_dt <= now
+        return {
+            'is_older': is_older,
+            'time_stamp': str(local_dt),
+        }
+
+    def faucet_balance_threshold(self, address: str) -> float:
+        """Check what the threshold amount is for a faucet"""
+        try:
+            balance_threshold = self.faucet.functions.nextBalance(
+                _subject=address
+            ).call({'from': address})
+            celo_amount = convert_wei_to_celo(balance_threshold)
+            return celo_amount
+        except Exception as e:
+            print(f'Error calling nextBalance: {e}')
+
+    def faucet_gimme(self, private_key: str, address: str) -> dict:
+        """Call the gimme function for an account from the faucet"""
+        raw_balance = self.w3.eth.get_balance(address)
+        balance = convert_wei_to_celo(raw_balance)
+
+        faucet_thresh = self.faucet_balance_threshold(address)
+
+        # do not proceed if they cannot request because current balance
+        if balance > faucet_thresh:
+            print('Your balance is too high')
+            return {
+                'balance': balance,
+                'threshold': faucet_thresh,
+                'faucet_thresh': True,
+                'amount': -1,
+                'success': False,
+                'time_check': False,
+                'time': -1
+            }
+
+        # do not proceed if they cannot request because of time
+        time_check = self.faucet_check_time(address)
+        if not time_check['is_older']:
+            return {
+                'balance': balance,
+                'threshold': faucet_thresh,
+                'amount': -1,
+                'success': False,
+                'time_check': True,
+                'time': time_check['time_stamp'],
+            }
+
+        nonce = self.w3.eth.get_transaction_count(address)
+        gas_price = self.w3.eth.gas_price
+
+        gas_estimate = self.faucet.functions.gimme().estimate_gas({
+            'from': address,
+        })
+        tx = self.faucet.functions.gimme().build_transaction({
+            'from': address,
+            'nonce': nonce,
+            'gas': gas_estimate,
+            'gasPrice': gas_price,
+            'chainId': self.w3.eth.chain_id,
+        })
+
+        # Sign the transaction
+        signed_tx = self.w3.eth.account.sign_transaction(
+            tx,
+            private_key=private_key
+        )
+
+        tx_hash = self.w3.eth.send_raw_transaction(signed_tx.raw_transaction)
+
+        # Wait for the transaction to be mined
+        receipt = self.w3.eth.wait_for_transaction_receipt(tx_hash)
+        try:
+            give_event = self.faucet.events.Give().process_receipt(receipt)
+            for event in give_event:
+                amount = event['args']['_amount']
+                return {
+                    'balance': balance,
+                    'threshold': faucet_thresh,
+                    'amount': convert_wei_to_celo(amount),
+                    'success': True,
+                    'time_check': True,
+                    'time': time_check['time_stamp'],
+                }
+        except Exception as e:
+            print(f'Error processing events: {e}')
