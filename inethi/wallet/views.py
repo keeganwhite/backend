@@ -137,6 +137,81 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             ))
 
+    @action(detail=True, methods=['post'], url_path='send-token-username')
+    def send_token_pk_username(self, request, pk=None):
+        """
+        Send tokens to another wallet.
+        Requires 'username' and 'amount'.
+        """
+        wallet = self.get_object()  # auto calls with pk
+        if wallet.user != request.user:
+            raise PermissionDenied(
+                "You cannot send tokens from someone else's wallet."
+            )
+
+        # Validate recipient address and amount
+        username = request.data.get('username')
+        amount = request.data.get('amount')
+
+        if not username or not amount:
+            return Response(
+                {'error': 'Recipient address and amount are required.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        receiver_exists = User.objects.filter(username=username).exists()
+        if not receiver_exists:
+            return Response(
+                {
+                    'detail': 'Recipient username not found.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        receiver = User.objects.get(username=username)
+        receiver_wallet_exists = Wallet.objects.filter(user=receiver).exists()
+
+        if not receiver_wallet_exists:
+            return Response(
+                {
+                    'detail': 'Recipient Wallet not found.'
+                },
+                status=status.HTTP_404_NOT_FOUND
+            )
+        receiver_wallet = Wallet.objects.filter(user=receiver).first()
+        recipient_address = receiver_wallet.address
+
+        try:
+
+            # Decrypt the private key
+            decrypted_private_key = utils.crypto.decrypt_private_key(
+                wallet.private_key
+            )
+            # Send tokens using CryptoUtils
+            tx_receipt = self.crypto_utils.send_to_wallet_address(
+                wallet.address,
+                decrypted_private_key,
+                recipient_address,
+                float(amount)
+            )
+            tx_receipt_dict = {
+                'transactionHash': tx_receipt.transactionHash.hex(),
+                'blockHash': tx_receipt.blockHash.hex(),
+                'blockNumber': tx_receipt.blockNumber,
+                'gasUsed': tx_receipt.gasUsed,
+                'status': tx_receipt.status,
+                'transactionIndex': tx_receipt.transactionIndex
+            }
+
+            return Response(
+                {'transaction_receipt': tx_receipt_dict},
+                status=status.HTTP_200_OK
+            )
+        except Exception as e:
+            return (Response(
+                {'error': str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            ))
+
     @action(detail=False, methods=['post'], url_path='send-token-by-address')
     def send_token_user_address(self, request):
         """
