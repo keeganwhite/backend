@@ -130,6 +130,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
             refreshed_token_response = keycloak_openid.refresh_token(
                 refresh_token
             )
+
             return {
                 'access_token': refreshed_token_response.get('access_token'),
                 'refresh_token': refreshed_token_response.get('refresh_token'),
@@ -137,6 +138,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
             }
 
         except KeycloakError as e:
+            print(e)
             raise serializers.ValidationError(
                 f'Failed to refresh token: {str(e)}'
             )

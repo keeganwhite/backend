@@ -31,15 +31,6 @@ class UserManager(BaseUserManager):
         if self.model.objects.filter(username=username).exists():
             raise ValueError('Username must be unique')
 
-        # Create Django User
-        user = self.model(
-            email=self.normalize_email(email),
-            username=username,
-            **extra_fields
-        )
-        user.set_password(password)
-        user.save(using=self._db)
-
         # Create Keycloak user
         try:
             # Create a new Keycloak user
@@ -67,6 +58,14 @@ class UserManager(BaseUserManager):
             raise ValidationError(
                 {'detail': f'Keycloak error: {str(e)}'}, code=400
             )
+        # If Keycloak user creation is successful, create Django user
+        user = self.model(
+            email=self.normalize_email(email),
+            username=username,
+            **extra_fields
+        )
+        user.set_password(password)
+        user.save(using=self._db)
 
         return user
 
@@ -189,3 +188,29 @@ class AccountsIndexContract(SmartContract):
     def save(self, *args, **kwargs):
         self.contract_type = 'account index'
         super().save(*args, **kwargs)
+
+
+class Service(models.Model):
+    """
+    Service Object that stores data about a service
+    offered by iNethi
+    """
+    TYPE_ENTERTAINMENT = 'entertainment'
+    TYPE_LEARNING = 'learning'
+    TYPE_UTILITY = 'utility'
+
+    TYPE_CHOICES = [
+        (TYPE_ENTERTAINMENT, 'Entertainment'),
+        (TYPE_LEARNING, 'Learning'),
+        (TYPE_UTILITY, 'Utility'),
+    ]
+
+    name = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+    url = models.URLField(unique=True)
+    type = models.CharField(
+        max_length=50,
+        choices=TYPE_CHOICES,
+        default=TYPE_UTILITY,
+    )
+    paid = models.BooleanField(default=False)

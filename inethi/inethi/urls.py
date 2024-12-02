@@ -32,4 +32,7 @@ urlpatterns = [
     path('api/v1/', include(
         'smart_contracts.urls', namespace='smart_contracts'
     )),
+    path('api/v1/', include(
+        'services.urls', namespace='services'
+    )),
 ]
