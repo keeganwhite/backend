@@ -6,7 +6,8 @@ from .models import (
     Wallet,
     SmartContract,
     FaucetSmartContract,
-    AccountsIndexContract
+    AccountsIndexContract,
+    Service
 )
 
 # Register your models here
@@ -15,3 +16,4 @@ admin.site.register(Wallet)
 admin.site.register(SmartContract)
 admin.site.register(FaucetSmartContract)
 admin.site.register(AccountsIndexContract)
+admin.site.register(Service)

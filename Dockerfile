@@ -1,4 +1,4 @@
-FROM python:3.12.5-alpine3.19
+FROM python:3.10.15-alpine3.20
 
 ENV PYTHONUNBUFFERED=1
 
@@ -9,6 +9,7 @@ WORKDIR /inethi
 EXPOSE 8000
 
 ARG DEV=false
+
 RUN python -m venv /py && \
     /py/bin/pip install --upgrade pip && \
     apk add --update --no-cache postgresql-client && \
