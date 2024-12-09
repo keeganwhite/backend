@@ -18,20 +18,42 @@ from keycloak.exceptions import (
 
 class UserSerializer(serializers.ModelSerializer):
     """Serializer for the user model"""
+    email = serializers.EmailField(required=False, allow_blank=True)
+
     class Meta:
         model = get_user_model()
-        fields = ['email', 'username', 'first_name', 'last_name', 'password']
+        fields = [
+            'email',
+            'username',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'password'
+        ]
         extra_kwargs = {
             'password': {'write_only': True, 'min_length': 5},
-            'username': {'required': True}
+            'username': {'required': True},
+            'phone_number': {'required': False},  # Optional phone number
+            'email': {'required': False},  # Optional email
         }
 
+    def validate_email(self, value):
+
+        if not value or value.strip() == "":
+
+            return None
+        return value
+
     def create(self, validated_data):
-        """Create a new user with encrypted password."""
+
+        email = validated_data.get("email")
+        username = validated_data.get("username")
+        validated_data["email"] = email or f"{username}@inethi.com"
+
         return get_user_model().objects.create_user(**validated_data)
 
     def update(self, instance, validated_data):
-        """Update a user with encrypted password."""
+        """Update a user with encrypted password"""
         password = validated_data.pop('password', None)
         user = super().update(instance, validated_data)
         if password:
@@ -44,6 +66,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
     """Serializer for the Keycloak user auth token"""
     token = serializers.CharField(required=False)
     email = serializers.EmailField(required=False)
+    username = serializers.CharField(required=False)
     password = serializers.CharField(
         style={'input_type': 'password'},
         trim_whitespace=False,
@@ -55,8 +78,10 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
         Validate and authenticate the user using either
         Keycloak token or email/password
         """
+
         token = attrs.get('token')
         email = attrs.get('email')
+        username = attrs.get('username')
         password = attrs.get('password')
         expires_in = attrs.get('expires_in')
         refresh_token = attrs.get('refresh_token')
@@ -64,7 +89,19 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
             # Handle Keycloak token authentication
             keycloak_openid = KEYCLOAK_OPENID
 
+            if username and not email:
+                # Look up the email based on the username
+                user = get_user_model().objects.filter(
+                    username=username
+                ).first()
+                if not user:
+                    raise serializers.ValidationError(
+                        "User with this username does not exist."
+                    )
+                email = user.email
+
             if email and password:
+
                 # Handle email/password authentication with Keycloak
                 token_response = keycloak_openid.token(
                     username=email,
@@ -100,7 +137,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
 
             else:
                 raise serializers.ValidationError(
-                    'Must include either token or email and password.'
+                    'Must include either token or email/username and password.'
                 )
         except KeycloakAuthenticationError:
             raise serializers.ValidationError(
@@ -118,6 +155,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
                 code=500
             )
         except Exception as e:
+
             raise serializers.ValidationError(
                 {'detail': f'Invalid credentials: {str(e)}'},
                 code=400

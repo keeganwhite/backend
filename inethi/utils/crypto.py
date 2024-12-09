@@ -130,6 +130,7 @@ class CryptoUtils:
             to_address,
             token_amount
         )
+
         gas_price = self.w3.eth.gas_price
 
         # Prepare and sign the transaction
@@ -145,11 +146,33 @@ class CryptoUtils:
         receipt = self.complete_transaction(private_key, tx)
         return receipt
 
+    def check_gas_status(self, from_address: str, gas_amount: int) -> bool:
+        gas_balance = self.balance_of_celo(from_address)
+        if gas_balance > gas_amount:
+            return True
+        return False
+
     def balance_of(self, address: str) -> float:
         """Check the balance of a wallet."""
         raw_balance = self.contract.functions.balanceOf(address).call()
         decimals = self.contract.functions.decimals().call()
         return raw_balance / (10**decimals)
+
+    def balance_of_celo(self, address: str) -> float:
+        """
+        Check the CELO balance of a wallet.
+        This checks the native CELO balance of the address.
+        """
+        try:
+            # Get the raw balance in Wei
+            raw_balance = self.w3.eth.get_balance(address)
+            # Convert the balance from Wei to CELO
+            celo_balance = raw_balance
+            # celo_balance = convert_wei_to_celo(raw_balance)
+            return celo_balance
+        except Exception as e:
+            print(f"Error fetching CELO balance for address {address}: {e}")
+            return 0.0
 
     def faucet_give_to(
             self,
@@ -192,6 +215,35 @@ class CryptoUtils:
         """Check if an address is active on the account index."""
         active = self.registry.functions.isActive(address_to_check).call()
         return active
+
+    def pre_transaction_check(
+            self,
+            private_key_admin: str,
+            from_address: str,
+            to_address: str,
+            amount: float) -> bool:
+        """Check if transaction will be successful. Rectify if not"""
+        decimals = self.contract.functions.decimals().call()
+        token_amount = int(amount * (10 ** decimals))
+
+        # Estimate gas and get current gas price
+        gas = self.estimate_gas_for_transfer(
+            self.contract,
+            from_address,
+            to_address,
+            token_amount
+        )
+
+        # ensure wallet has enough gas
+        gas_status = self.check_gas_status(from_address, gas)
+        # there is not enough gas to transact
+        if not gas_status:
+            active = self.account_index_check_active(from_address)
+            if not active:
+                self.registry_add(private_key_admin, from_address)
+            self.faucet_give_to(private_key_admin, from_address)
+        # if no error is raised return true
+        return True
 
     def registry_add(self, private_key: str, address_to_add: str) -> TxReceipt:
         """

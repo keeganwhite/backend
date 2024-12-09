@@ -7,7 +7,8 @@ from .models import (
     SmartContract,
     FaucetSmartContract,
     AccountsIndexContract,
-    Service
+    Service,
+    Transaction
 )
 
 # Register your models here
@@ -17,3 +18,4 @@ admin.site.register(SmartContract)
 admin.site.register(FaucetSmartContract)
 admin.site.register(AccountsIndexContract)
 admin.site.register(Service)
+admin.site.register(Transaction)

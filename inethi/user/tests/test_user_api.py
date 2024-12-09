@@ -22,6 +22,69 @@ class PublicUserApiTests(TestCase):
         self.client = APIClient()
 
     @patch('inethi.settings.KEYCLOAK_ADMIN.create_user')
+    def test_create_user_no_email(self, mock_keycloak_create_user):
+        """Test creating user without providing an email generates one"""
+        mock_keycloak_create_user.return_value = 'mock-keycloak-user-id'
+        payload = {
+            'password': 'testpassword123',
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
+        }
+
+        res = self.client.post(CREATE_USER_URL, payload)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        user = get_user_model().objects.get(username=payload['username'])
+        expected_email = f"{payload['username']}@inethi.com"
+        self.assertEqual(user.email, expected_email)
+        self.assertTrue(user.check_password(payload['password']))
+        self.assertNotIn('password', res.data)
+        mock_keycloak_create_user.assert_called_once()
+
+    @patch('inethi.settings.KEYCLOAK_ADMIN.create_user')
+    def test_create_user_no_phone_number(self, mock_keycloak_create_user):
+        """Test creating user without providing a phone number"""
+        mock_keycloak_create_user.return_value = 'mock-keycloak-user-id'
+        payload = {
+            'email': 'test@example.com',
+            'password': 'testpassword123',
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
+        }
+
+        res = self.client.post(CREATE_USER_URL, payload)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        user = get_user_model().objects.get(email=payload['email'])
+        self.assertIsNone(user.phone_number)
+        self.assertTrue(user.check_password(payload['password']))
+        self.assertNotIn('password', res.data)
+        mock_keycloak_create_user.assert_called_once()
+
+    @patch('inethi.settings.KEYCLOAK_ADMIN.create_user')
+    def test_create_user_email_and_phone_missing(
+            self,
+            mock_keycloak_create_user
+    ):
+        """Test creating user without email and phone number"""
+        mock_keycloak_create_user.return_value = 'mock-keycloak-user-id'
+        payload = {
+            'password': 'testpassword123',
+            'first_name': 'test first name',
+            'last_name': 'test last name',
+            'username': 'test_username'
+        }
+
+        res = self.client.post(CREATE_USER_URL, payload)
+        self.assertEqual(res.status_code, status.HTTP_201_CREATED)
+        user = get_user_model().objects.get(username=payload['username'])
+        expected_email = f"{payload['username']}@inethi.com"
+        self.assertEqual(user.email, expected_email)
+        self.assertIsNone(user.phone_number)  # Ensure phone is None
+        self.assertTrue(user.check_password(payload['password']))
+        mock_keycloak_create_user.assert_called_once()
+
+    @patch('inethi.settings.KEYCLOAK_ADMIN.create_user')
     def test_create_valid_user_success(self, mock_keycloak_create_user):
         """Test creating user with valid payload is successful"""
         mock_keycloak_create_user.return_value = 'mock-keycloak-user-id'
@@ -202,6 +265,7 @@ class PrivateUserApiTests(TestCase):
             'email': self.user.email,
             'first_name': self.user.first_name,
             'last_name': self.user.last_name,
+            'phone_number': None
         })
 
     def test_post_me_not_allowed(self):

@@ -22,14 +22,21 @@ class KeycloakAuthentication(BaseAuthentication):
             # Verify token with Keycloak
             user_info = keycloak_openid.userinfo(token)
             email = user_info.get('email')
+            username = user_info.get('preferred_username')  # username fallback
 
-            # Find or create the user in Django
-            user = get_user_model().objects.filter(email=email).first()
+            # Find the user by email or username
+            user = None
+            if email:
+                user = get_user_model().objects.filter(
+                    email=email
+                ).first()
+            if not user and username:
+                user = get_user_model().objects.filter(
+                    username=username
+                ).first()
+
             if not user:
-                print('Cannot find user')
-                raise AuthenticationFailed(
-                    'User not found'
-                )
+                raise AuthenticationFailed('User not found')
 
             # Return the user and the token
             return (user, token)

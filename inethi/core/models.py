@@ -22,14 +22,20 @@ class UserManager(BaseUserManager):
 
     def create_user(self, email, username, password=None, **extra_fields):
         """Create a new user"""
-        if not email:
-            raise ValueError('Users must have an email address')
         if not username:
             raise ValueError('Users must have a username')
+
+        # Generate email if missing or empty
+        email = email or f"{username}@inethi.com"
+        if not email.strip():  # Prevent empty email from being saved
+            email = f"{username}@inethi.com"
 
         # Ensure the username is unique
         if self.model.objects.filter(username=username).exists():
             raise ValueError('Username must be unique')
+
+        if self.model.objects.filter(email=email).exists():
+            raise ValueError('Email must be unique')
 
         # Create Keycloak user
         try:
@@ -84,9 +90,9 @@ class User(AbstractBaseUser, PermissionsMixin):
     username = models.CharField(max_length=255, unique=True)
     first_name = models.CharField(max_length=255, blank=True, null=True)
     last_name = models.CharField(max_length=255, blank=True, null=True)
+    phone_number = models.CharField(max_length=15, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
-
     USERNAME_FIELD = 'email'  # this is used for auth purposes
     REQUIRED_FIELDS = ['username']
 
@@ -214,3 +220,42 @@ class Service(models.Model):
         default=TYPE_UTILITY,
     )
     paid = models.BooleanField(default=False)
+
+
+class Transaction(models.Model):
+    """
+    Transaction Object
+    """
+    CATEGORY_CHOICES = [
+        ('TRANSFER', 'Transfer'),
+        ('REWARD', 'Reward'),
+        ('PAYMENT', 'Payment'),
+        ('OTHER', 'Other'),
+    ]
+    sender = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='sent_transactions'
+    )
+    recipient = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='received_transactions',
+        null=True,
+        blank=True
+    )
+    recipient_address = models.CharField(max_length=256)
+    amount = models.DecimalField(max_digits=18, decimal_places=8)
+    transaction_hash = models.CharField(max_length=256)
+    block_number = models.CharField(max_length=256)
+    block_hash = models.CharField(max_length=256)
+    gas_used = models.DecimalField(max_digits=18, decimal_places=8)
+    category = models.CharField(
+        max_length=50,
+        choices=CATEGORY_CHOICES,
+        default='TRANSFER'
+    )
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Transaction from {self.sender} to {self.recipient_address}"

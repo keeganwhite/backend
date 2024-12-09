@@ -1,6 +1,7 @@
 """
 Views for the user API
 """
+from django.contrib.auth import get_user_model
 from keycloak.exceptions import (
     KeycloakAuthenticationError,
     KeycloakConnectionError,
@@ -22,6 +23,11 @@ from .serializers import (
     UserSerializer,
     KeycloakAuthTokenSerializer
 )
+
+
+def create_user(**params):
+    """Helper function to create a user"""
+    return get_user_model().objects.create_user(**params)
 
 
 def update_keycloak_user(user, data):
@@ -73,6 +79,7 @@ class CreateTokenView(ObtainAuthToken):
             data=request.data, context={'request': request}
         )
         if not serializer.is_valid():
+            print(serializer.errors)
             return Response(
                 serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST

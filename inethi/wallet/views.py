@@ -3,12 +3,14 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 
 import utils.crypto
-from core.models import Wallet, User
+from core.models import Wallet, User, Transaction
 from utils.crypto import CryptoUtils
 from utils.keycloak import KeycloakAuthentication
 from .serializers import WalletSerializer
 from rest_framework.exceptions import PermissionDenied
 from django.conf import settings
+
+from utils.crypto import decrypt_private_key
 
 
 class WalletViewSet(viewsets.ModelViewSet):
@@ -23,6 +25,7 @@ class WalletViewSet(viewsets.ModelViewSet):
         contract_abi_path=settings.ABI_FILE_PATH,
         contract_address=settings.CONTRACT_ADDRESS,
         registry=settings.FAUCET_AND_INDEX_ENABLED,
+        faucet=settings.FAUCET_AND_INDEX_ENABLED,
     )
 
     def get_queryset(self):
@@ -111,6 +114,18 @@ class WalletViewSet(viewsets.ModelViewSet):
             decrypted_private_key = utils.crypto.decrypt_private_key(
                 wallet.private_key
             )
+            # ensure account has gas if we can give them gas
+            if settings.FAUCET_AND_INDEX_ENABLED:
+                faucet_creator = Wallet.objects.get(
+                    address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
+                )
+                p_key = decrypt_private_key(faucet_creator.private_key)
+                self.crypto_utils.pre_transaction_check(
+                    private_key_admin=p_key,
+                    from_address=wallet.address,
+                    to_address=recipient_address,
+                    amount=float(amount)
+                )
             # Send tokens using CryptoUtils
             tx_receipt = self.crypto_utils.send_to_wallet_address(
                 wallet.address,
@@ -126,6 +141,17 @@ class WalletViewSet(viewsets.ModelViewSet):
                 'status': tx_receipt.status,
                 'transactionIndex': tx_receipt.transactionIndex
             }
+            # create transaction
+            Transaction.objects.create(
+                sender=request.user,
+                recipient_address=recipient_address,
+                amount=float(amount),
+                block_hash=tx_receipt.blockHash.hex(),
+                transaction_hash=tx_receipt.transactionHash.hex(),
+                block_number=tx_receipt.blockNumber,
+                gas_used=tx_receipt.gasUsed,
+                category='Transfer'
+            )
 
             return Response(
                 {'transaction_receipt': tx_receipt_dict},
@@ -186,6 +212,18 @@ class WalletViewSet(viewsets.ModelViewSet):
             decrypted_private_key = utils.crypto.decrypt_private_key(
                 wallet.private_key
             )
+            # ensure account has gas if we can give them gas
+            if settings.FAUCET_AND_INDEX_ENABLED:
+                faucet_creator = Wallet.objects.get(
+                    address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
+                )
+                p_key = decrypt_private_key(faucet_creator.private_key)
+                self.crypto_utils.pre_transaction_check(
+                    private_key_admin=p_key,
+                    from_address=wallet.address,
+                    to_address=recipient_address,
+                    amount=float(amount)
+                )
             # Send tokens using CryptoUtils
             tx_receipt = self.crypto_utils.send_to_wallet_address(
                 wallet.address,
@@ -201,6 +239,19 @@ class WalletViewSet(viewsets.ModelViewSet):
                 'status': tx_receipt.status,
                 'transactionIndex': tx_receipt.transactionIndex
             }
+
+            # create transaction
+            Transaction.objects.create(
+                sender=request.user,
+                recipient=receiver,
+                recipient_address=recipient_address,
+                amount=float(amount),
+                block_hash=tx_receipt.blockHash.hex(),
+                transaction_hash=tx_receipt.transactionHash.hex(),
+                block_number=tx_receipt.blockNumber,
+                gas_used=tx_receipt.gasUsed,
+                category='Transfer'
+            )
 
             return Response(
                 {'transaction_receipt': tx_receipt_dict},

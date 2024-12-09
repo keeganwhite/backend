@@ -35,4 +35,7 @@ urlpatterns = [
     path('api/v1/', include(
         'services.urls', namespace='services'
     )),
+    path('api/v1/', include(
+        'transaction.urls', namespace='transaction'
+    ))
 ]
