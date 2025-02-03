@@ -214,13 +214,18 @@ class VoucherViewSet(viewsets.ModelViewSet):
             )
 
     @action(detail=False,
-            methods=['post'],
+            methods=['get'],
             permission_classes=[IsSuperUserOrAPIKeyUser]
             )
     def wallet_address_vouchers(self, request):
-        wallet_address = request.data.get('wallet_address')
-        vouchers = (Voucher.objects.filter(
-            wallet_address=wallet_address)
-                    .order_by('-created_at'))
-        serializer = self.get_serializer(vouchers, many=True)
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        wallet_address = request.query_params.get("wallet_address")
+        if not wallet_address:
+            return Response({"error": "Wallet address is required"}, status=status.HTTP_400_BAD_REQUEST)
+        try:
+            vouchers = (Voucher.objects.filter(
+                wallet_address=wallet_address)
+                        .order_by('-created_at'))
+            serializer = self.get_serializer(vouchers, many=True)
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        except Exception as e:
+            return Response({"error": f"unexpected error {e}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
