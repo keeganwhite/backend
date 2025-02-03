@@ -228,6 +228,7 @@ class Transaction(models.Model):
     """
     CATEGORY_CHOICES = [
         ('TRANSFER', 'Transfer'),
+        ('INTERNET_COUPON', 'Internet Coupon'),
         ('REWARD', 'Reward'),
         ('PAYMENT', 'Payment'),
         ('OTHER', 'Other'),
@@ -235,7 +236,9 @@ class Transaction(models.Model):
     sender = models.ForeignKey(
         User,
         on_delete=models.CASCADE,
-        related_name='sent_transactions'
+        related_name='sent_transactions',
+        null=True,
+        blank=True
     )
     recipient = models.ForeignKey(
         User,
@@ -245,17 +248,44 @@ class Transaction(models.Model):
         blank=True
     )
     recipient_address = models.CharField(max_length=256)
+    sender_address = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True
+    )
     amount = models.DecimalField(max_digits=18, decimal_places=8)
-    transaction_hash = models.CharField(max_length=256)
-    block_number = models.CharField(max_length=256)
-    block_hash = models.CharField(max_length=256)
-    gas_used = models.DecimalField(max_digits=18, decimal_places=8)
+    transaction_hash = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True
+    )
+    block_number = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True
+    )
+    block_hash = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True
+    )
+    gas_used = models.DecimalField(
+        max_digits=18,
+        decimal_places=8,
+        null=True,
+        blank=True
+    )
     category = models.CharField(
         max_length=50,
         choices=CATEGORY_CHOICES,
         default='TRANSFER'
     )
     timestamp = models.DateTimeField(auto_now_add=True)
+    token = models.CharField(
+        max_length=255,
+        null=True,
+        blank=True
+    )
 
     def __str__(self):
         return f"Transaction from {self.sender} to {self.recipient_address}"

@@ -88,6 +88,23 @@ class SmartContractViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(user=self.request.user)
 
+    def list(self, request, *args, **kwargs):
+        """
+        List all contracts or filter by contract type.
+        """
+        contract_type = request.query_params.get('contract_type')
+        if contract_type:
+            self.queryset = self.queryset.filter(contract_type=contract_type)
+        return super().list(request, *args, **kwargs)
+
+    def retrieve(self, request, *args, **kwargs):
+        """
+        Retrieve a specific contract by primary key.
+        """
+        instance = self.get_object()
+        serializer = self.get_serializer(instance)
+        return Response(serializer.data)
+
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         contract_type = request.data.get(

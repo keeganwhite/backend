@@ -43,6 +43,3 @@ print(f"Your encryption key: {encryption_key.decode()}")
 from django.core.management.utils import get_random_secret_key
 print(get_random_secret_key())
 ```
-
-## Config
-View [the config file](CONFIG.md) for information about setting up the system.

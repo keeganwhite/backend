@@ -37,5 +37,6 @@ urlpatterns = [
     )),
     path('api/v1/', include(
         'transaction.urls', namespace='transaction'
-    ))
+    )),
+    path('api/v1/', include('radiusdesk.urls', namespace='radiusdesk')),
 ]

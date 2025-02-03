@@ -17,6 +17,7 @@ from keycloak import KeycloakOpenID, KeycloakOpenIDConnection, KeycloakAdmin
 env = environ.Env(
     ALLOWED_HOSTS=(list, []),
     CSRF_TRUSTED_ORIGINS=(list, []),
+    CORS_ALLOWED_ORIGINS=(list, []),
 )
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -32,6 +33,8 @@ SECRET_KEY=env("SECRET_KEY")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG=env("DEBUG")
 
+CORS_ALLOW_CREDENTIALS = True
+CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS')
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS')
 
@@ -47,12 +50,16 @@ INSTALLED_APPS = [
     'core',
     'rest_framework',
     'drf_spectacular',
+    'corsheaders',
     # iNethi Apps
     'user',
-    'wallet'
+    'wallet',
+    'radiusdesk',
+    'api_key'
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
