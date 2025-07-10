@@ -41,12 +41,14 @@ CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS')
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    'django_celery_beat',
     'core',
     'rest_framework',
     'drf_spectacular',
@@ -55,7 +57,9 @@ INSTALLED_APPS = [
     'user',
     'wallet',
     'radiusdesk',
-    'api_key'
+    'network',
+    'api_key',
+     'reward'
 ]
 
 MIDDLEWARE = [
@@ -71,7 +75,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'inethi.urls'
 # For admin site authentication
-
+ASGI_APPLICATION = "inethi.asgi.application"
 
 TEMPLATES = [
     {
@@ -135,7 +139,7 @@ TIME_ZONE = 'Africa/Johannesburg'
 USE_I18N = True
 
 USE_TZ = True
-
+CELERY_BROKER_URL=env("CELERY_BROKER_URL")
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
@@ -164,9 +168,9 @@ KEYCLOAK_CONNECTION = KeycloakOpenIDConnection(
     server_url=env("KEYCLOAK_URL"),
     username=env("KEYCLOAK_ADMIN"),
     password=env("KEYCLOAK_ADMIN_PASSWORD"),
-    realm_name=env("KEYCLOAK_REALM"),
+    realm_name=env("KEYCLOAK_REALM"),  # type: ignore
     user_realm_name=env("KEYCLOAK_REALM"),
-    client_id=env("KEYCLOAK_BACKEND_CLIENT_ID"),
+    client_id=env("KEYCLOAK_BACKEND_CLIENT_ID"),  # type: ignore
     client_secret_key=env("KEYCLOAK_CLIENT_SECRET"),
     verify=True
 )
@@ -202,3 +206,91 @@ FAUCET_ADMIN_WALLET_ADDRESS=env("FAUCET_ADMIN_WALLET_ADDRESS")
 
 # Enable account index and faucet
 FAUCET_AND_INDEX_ENABLED=env("FAUCET_AND_INDEX_ENABLED")
+
+# Logging configuration
+# Use /tmp directory for logs in CI environment
+log_dir = '/tmp' if os.environ.get('CI') else BASE_DIR
+
+# Use env for CI detection
+CI = env.bool('CI', default=False)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '[{asctime}] {levelname} {name} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+            'level': 'INFO',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': True,
+        },
+        'wallet': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'utils.crypto': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'reward': {
+            'handlers': ['console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
+
+if not CI:
+    LOGGING['handlers'].update({
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'errors.log'),
+            'maxBytes': 1024*1024*50,  # 50MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'level': 'ERROR',
+        },
+        'wallet_debug_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'debug.log'),
+            'maxBytes': 1024*1024*50,  # 50MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+            'level': 'INFO',
+        },
+        'rewards_file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'rewards.log'),
+            'maxBytes': 1024*1024*50,  # 50MB
+            'backupCount': 15,
+            'formatter': 'verbose',
+            'level': 'INFO',
+        },
+    })
+    LOGGING['root']['handlers'] = ['console', 'file']
+    LOGGING['loggers']['django']['handlers'] = ['console', 'file']
+    LOGGING['loggers']['wallet']['handlers'] = ['wallet_debug_file', 'file', 'console']
+    LOGGING['loggers']['utils.crypto']['handlers'] = ['wallet_debug_file', 'file', 'console']
+    LOGGING['loggers']['reward']['handlers'] = ['rewards_file', 'console']

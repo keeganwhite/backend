@@ -8,21 +8,22 @@ from keycloak.exceptions import (
     KeycloakError
 )
 from rest_framework import serializers
-from rest_framework import generics, permissions, status
+from rest_framework import generics, permissions, status, filters
 from rest_framework.authtoken.views import ObtainAuthToken
 from rest_framework.exceptions import ValidationError
-
 from rest_framework.response import Response
 from rest_framework.settings import api_settings
-
 from django.conf import settings
 from rest_framework.views import APIView
-
 from utils.keycloak import KeycloakAuthentication
 from .serializers import (
     UserSerializer,
     KeycloakAuthTokenSerializer
 )
+from rest_framework.generics import RetrieveAPIView
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def create_user(**params):
@@ -63,9 +64,71 @@ def update_keycloak_user(user, data):
         )
 
 
+class RetrieveUserView(RetrieveAPIView):
+    """Retrieve a user by ID"""
+    queryset = get_user_model().objects.all()
+    serializer_class = UserSerializer
+    authentication_classes = (KeycloakAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    lookup_field = "id"
+
+    def get(self, request, *args, **kwargs):
+        logger.info(
+            f"User {request.user} requested user details for id={kwargs.get('id')}"
+        )
+        try:
+            return super().get(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Error retrieving user id={kwargs.get('id')}: {e}")
+            raise
+
+
 class CreateUserView(generics.CreateAPIView):
     """Create a new user in the system"""
     serializer_class = UserSerializer
+
+    def create(self, request, *args, **kwargs):
+        logger.info(f"User creation requested with data: {request.data}")
+        try:
+            response = super().create(request, *args, **kwargs)
+            logger.info(f"User created successfully: {response.data}")
+            return response
+        except Exception as e:
+            logger.error(f"User creation failed: {e}")
+            raise
+
+
+class NetworkAdminLoginView(ObtainAuthToken):
+    """Generates a token for network admins"""
+    serializer_class = KeycloakAuthTokenSerializer
+    renderer_classes = api_settings.DEFAULT_RENDERER_CLASSES
+
+    def post(self, request, *args, **kwargs):
+        logger.info(f"Network admin login attempt for data: {request.data}")
+        serializer = self.serializer_class(
+            data=request.data, context={'request': request}
+        )
+        if not serializer.is_valid():
+            logger.error(
+                f"Network admin login failed validation: {serializer.errors}"
+            )
+            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        user = serializer.validated_data.get('user')
+        if not user or not user.has_perm('core.network_admin'):
+            logger.error(f"User {user} does not have network admin privileges.")
+            return Response(
+                {'detail': 'User does not have network admin privileges.'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        keycloak_token = serializer.validated_data.get('token')
+        refresh_token = serializer.validated_data.get('refresh_token')
+        expires_in = serializer.validated_data.get('expires_in')
+        logger.info(f"Network admin {user} logged in successfully.")
+        return Response({
+            'token': keycloak_token,
+            'refresh_token': refresh_token,
+            'expires_in': expires_in
+        }, status=status.HTTP_200_OK)
 
 
 class CreateTokenView(ObtainAuthToken):
@@ -74,21 +137,22 @@ class CreateTokenView(ObtainAuthToken):
     renderer_classes = api_settings.DEFAULT_RENDERER_CLASSES
 
     def post(self, request, *args, **kwargs):
-        # Use the KeycloakAuthTokenSerializer
+        logger.info(f"Token creation requested for data: {request.data}")
         serializer = self.serializer_class(
             data=request.data, context={'request': request}
         )
         if not serializer.is_valid():
-            print(serializer.errors)
+            logger.error(f"Token creation failed validation: {serializer.errors}")
             return Response(
                 serializer.errors,
                 status=status.HTTP_400_BAD_REQUEST
             )
-
         keycloak_token = serializer.validated_data.get('token')
         refresh_token = serializer.validated_data.get('refresh_token')
         expires_in = serializer.validated_data.get('expires_in')
-        # Return response based on the type of authentication
+        logger.info(
+            f"Token created for user: {serializer.validated_data.get('user')}"
+        )
         return Response({
             'token': keycloak_token,
             'refresh_token': refresh_token,
@@ -101,14 +165,17 @@ class RefreshTokenView(APIView):
     serializer = KeycloakAuthTokenSerializer()
 
     def post(self, request, *args, **kwargs):
+        logger.info(f"Refresh token requested: {request.data}")
         refresh_token = request.data.get('refresh_token')
         if not refresh_token:
+            logger.error("Refresh token missing in request.")
             return Response({'detail': 'Refresh token required.'}, status=400)
-
         try:
             token_data = self.serializer.refresh_token_if_needed(refresh_token)
+            logger.info("Token refreshed successfully.")
             return Response(token_data, status=200)
         except serializers.ValidationError as e:
+            logger.error(f"Token refresh failed: {e.detail}")
             return Response(e.detail, status=status.HTTP_400_BAD_REQUEST)
 
 
@@ -123,22 +190,23 @@ class ManageUserView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
     def update(self, request, *args, **kwargs):
-        """Override the update method to sync updates with Keycloak"""
         user = self.get_object()
         partial = kwargs.pop('partial', False)
+        logger.info(
+            f"User {user} profile update requested with data: {request.data}"
+        )
         serializer = self.get_serializer(
             user,
             data=request.data,
             partial=partial
         )
         serializer.is_valid(raise_exception=True)
-
-        # Save the changes to the Django user
         self.perform_update(serializer)
-
-        # Update Keycloak with the new details
-        update_keycloak_user(user, request.data)
-
+        try:
+            update_keycloak_user(user, request.data)
+            logger.info(f"User {user} profile updated successfully.")
+        except Exception as e:
+            logger.error(f"Failed to update Keycloak user for {user}: {e}")
         return Response(serializer.data)
 
     def patch(self, request, *args, **kwargs):
@@ -148,3 +216,29 @@ class ManageUserView(generics.RetrieveUpdateAPIView):
     def put(self, request, *args, **kwargs):
         """Override the put method"""
         return self.update(request, *args, **kwargs)
+
+
+class UserSearchView(generics.ListAPIView):
+    """
+    API endpoint that allows users to be searched by a query string.
+    For example: GET /api/users/search/?search=john
+    """
+    serializer_class = UserSerializer
+    authentication_classes = (KeycloakAuthentication,)
+    permission_classes = (permissions.IsAuthenticated,)
+    queryset = get_user_model().objects.all()
+
+    # Use the SearchFilter backend
+    filter_backends = [filters.SearchFilter]
+    # Allow searching by username
+    search_fields = ['username']
+
+    def get(self, request, *args, **kwargs):
+        logger.info(
+            f"User search requested by {request.user} with params: {request.query_params}"
+        )
+        try:
+            return super().get(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"User search failed: {e}")
+            raise

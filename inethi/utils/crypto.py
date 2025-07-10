@@ -1,6 +1,6 @@
 import json
+import logging
 
-import web3
 from cryptography.fernet import Fernet
 
 from web3 import Web3
@@ -9,6 +9,8 @@ from web3.types import TxReceipt
 
 from datetime import datetime, timezone
 from django.utils import timezone as django_timezone
+
+logger = logging.getLogger(__name__)
 
 
 def convert_wei_to_celo(wei_amount):
@@ -37,7 +39,10 @@ def load_contract(abi_path: str, contract_address: str):
         contract_abi = json.load(abi_file)
 
     w3 = Web3(Web3.HTTPProvider(settings.BLOCKCHAIN_PROVIDER_URL))
-    contract = w3.eth.contract(address=contract_address, abi=contract_abi)
+    contract = w3.eth.contract(
+        address=Web3.to_checksum_address(contract_address),
+        abi=contract_abi
+    )
     return contract
 
 
@@ -67,11 +72,18 @@ class CryptoUtils:
 
     def create_wallet(self) -> dict:
         """Create a wallet on the blockchain."""
-        account = self.w3.eth.account.create()
-        return {
-            'private_key': account._private_key.hex(),
-            'address': account.address
-        }
+        logger.info("Starting wallet creation process")
+        try:
+            account = self.w3.eth.account.create()
+            result = {
+                'private_key': account._private_key.hex(),
+                'address': account.address
+            }
+            logger.info(f"Wallet created: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Error in create_wallet: {e}")
+            return {}
 
     def complete_transaction(
             self,
@@ -97,19 +109,18 @@ class CryptoUtils:
 
     def estimate_gas_for_transfer(
             self,
-            contract: web3.eth.Contract,
+            contract,
             from_address: str,
             to_address: str,
             token_amount: int
     ) -> int:
         """Estimate the gas required for a transfer."""
         transfer_function = contract.functions.transfer(
-            to_address,
+            Web3.to_checksum_address(to_address),
             token_amount
         )
-
         return transfer_function.estimate_gas(
-            {'from': from_address}
+            {'from': Web3.to_checksum_address(from_address)}
         )
 
     def send_to_wallet_address(
@@ -130,12 +141,19 @@ class CryptoUtils:
             to_address,
             token_amount
         )
+        print('gas', gas)
 
         gas_price = self.w3.eth.gas_price
 
+        logger.info(
+            f"transfering to {to_address} from {from_address} for {token_amount} "
+            f"with gas {gas} and gas_price {gas_price}"
+        )
         # Prepare and sign the transaction
-        nonce = self.w3.eth.get_transaction_count(from_address)
-        transfer = self.contract.functions.transfer(to_address, token_amount)
+        nonce = self.w3.eth.get_transaction_count(Web3.to_checksum_address(from_address))
+        transfer = self.contract.functions.transfer(
+            Web3.to_checksum_address(to_address), token_amount
+        )
         tx = transfer.build_transaction({
             'chainId': self.w3.eth.chain_id,
             'gas': gas,
@@ -165,7 +183,7 @@ class CryptoUtils:
         """
         try:
             # Get the raw balance in Wei
-            raw_balance = self.w3.eth.get_balance(address)
+            raw_balance = self.w3.eth.get_balance(Web3.to_checksum_address(address))
             # Convert the balance from Wei to CELO
             celo_balance = raw_balance
             # celo_balance = convert_wei_to_celo(raw_balance)
@@ -177,43 +195,73 @@ class CryptoUtils:
     def faucet_give_to(
             self,
             private_key: str,
-            give_to_address: str
+            give_to_address: str,
+            nonce: int = None,
+            max_retries: int = 3
     ) -> TxReceipt:
-        """Give tokens to an address registered in the account index"""
+        """
+        Give tokens to an address registered in
+         the account index, with nonce management and retry.
+        """
         account = self.w3.eth.account.from_key(private_key)
         sender_address = account.address
-
-        nonce = self.w3.eth.get_transaction_count(sender_address)
-        gas_price = self.w3.eth.gas_price
-
-        gas_estimate = self.faucet.functions.giveTo(
-            give_to_address
-        ).estimate_gas({
-            'from': sender_address
-        })
-
-        tx = self.faucet.functions.giveTo(
-            give_to_address
-        ).build_transaction(
-            {
-                'from': sender_address,
-                'nonce': nonce,
-                'gas': gas_estimate,
-                'gasPrice': gas_price,
-                'chainId': self.w3.eth.chain_id,
-            }
-        )
-
-        receipt = self.complete_transaction(private_key, tx)
-
-        if receipt:
-            return receipt
-        else:
-            raise Exception("Transaction failed")
+        attempt = 0
+        logger.info(f"faucet_give_to: {give_to_address} with nonce {nonce}")
+        while attempt < max_retries:
+            try:
+                if nonce is None:
+                    nonce_to_use = self.w3.eth.get_transaction_count(
+                        Web3.to_checksum_address(sender_address)
+                    )
+                else:
+                    nonce_to_use = nonce
+                gas_price = self.w3.eth.gas_price
+                gas_estimate = self.faucet.functions.giveTo(
+                    Web3.to_checksum_address(give_to_address)
+                ).estimate_gas({
+                    'from': Web3.to_checksum_address(sender_address)
+                })
+                tx = self.faucet.functions.giveTo(
+                    Web3.to_checksum_address(give_to_address)
+                ).build_transaction(
+                    {
+                        'from': Web3.to_checksum_address(sender_address),
+                        'nonce': nonce_to_use,
+                        'gas': gas_estimate,
+                        'gasPrice': gas_price,
+                        'chainId': self.w3.eth.chain_id,
+                    }
+                )
+                receipt = self.complete_transaction(private_key, tx)
+                if receipt:
+                    return receipt
+                else:
+                    logger.error(
+                        f"faucet_give_to: {give_to_address}, nonce {nonce} failed."
+                    )
+                    raise Exception("Transaction failed")
+            except Exception as e:
+                logger.error(f"faucet_give_to attempt {attempt+1} failed: {e}")
+                # Check for nonce error
+                if hasattr(e, 'args') and e.args and 'nonce too low' in str(e.args[0]):
+                    logger.warning(
+                        "Nonce too low error detected, refetching nonce and retrying..."
+                    )
+                    nonce = self.w3.eth.get_transaction_count(
+                        Web3.to_checksum_address(sender_address)
+                    )
+                    attempt += 1
+                    continue
+                raise
+        raise Exception("faucet_give_to failed after retries")
 
     def account_index_check_active(self, address_to_check: str) -> bool:
         """Check if an address is active on the account index."""
-        active = self.registry.functions.isActive(address_to_check).call()
+        if self.registry is None:
+            raise Exception("Registry contract not loaded.")
+        active = self.registry.functions.isActive(
+            Web3.to_checksum_address(address_to_check)
+        ).call()
         return active
 
     def pre_transaction_check(
@@ -245,35 +293,65 @@ class CryptoUtils:
         # if no error is raised return true
         return True
 
-    def registry_add(self, private_key: str, address_to_add: str) -> TxReceipt:
+    def registry_add(
+        self, private_key, address_to_add, nonce=None, max_retries=3
+    ):
         """
         Add an address to a registry using the private key
-        of the contract owner
+        of the contract owner, with nonce management and retry.
         """
+        if self.registry is None:
+            raise Exception("Registry contract not loaded.")
         account = self.w3.eth.account.from_key(private_key)
         sender_address = account.address
-
-        nonce = self.w3.eth.get_transaction_count(sender_address)
-        gas_price = self.w3.eth.gas_price
-        gas_estimate = self.registry.functions.add(
-            address_to_add
-        ).estimate_gas({
-            'from': sender_address
-        })
-
-        tx = self.registry.functions.add(address_to_add).build_transaction({
-            'from': sender_address,
-            'nonce': nonce,
-            'gas': gas_estimate,
-            'gasPrice': gas_price,
-            'chainId': self.w3.eth.chain_id,
-        })
-
-        receipt = self.complete_transaction(private_key, tx)
-        if receipt:
-            return receipt
-        else:
-            raise Exception("Transaction failed")
+        attempt = 0
+        while attempt < max_retries:
+            try:
+                if nonce is None:
+                    nonce_to_use = self.w3.eth.get_transaction_count(
+                        Web3.to_checksum_address(sender_address)
+                    )
+                else:
+                    nonce_to_use = nonce
+                gas_price = self.w3.eth.gas_price
+                gas_estimate = self.registry.functions.add(
+                    Web3.to_checksum_address(address_to_add)
+                ).estimate_gas({
+                    'from': Web3.to_checksum_address(sender_address)
+                })
+                logger.info(
+                    f"registry_add: {address_to_add}, gas {gas_estimate}"
+                )
+                tx = self.registry.functions.add(
+                    Web3.to_checksum_address(address_to_add)
+                ).build_transaction(
+                    {
+                        'from': Web3.to_checksum_address(sender_address),
+                        'nonce': nonce_to_use,
+                        'gas': gas_estimate,
+                        'gasPrice': gas_price,
+                        'chainId': self.w3.eth.chain_id,
+                    }
+                )
+                receipt = self.complete_transaction(private_key, tx)
+                if receipt:
+                    return receipt
+                else:
+                    raise Exception("Transaction failed")
+            except Exception as e:
+                logger.error(f"registry_add attempt {attempt+1} failed: {e}")
+                # Check for nonce error
+                if hasattr(e, 'args') and e.args and 'nonce too low' in str(e.args[0]):
+                    logger.warning(
+                        "Nonce too low error detected, refetching nonce and retrying..."
+                    )
+                    nonce = self.w3.eth.get_transaction_count(
+                        Web3.to_checksum_address(sender_address)
+                    )
+                    attempt += 1
+                    continue
+                raise
+        raise Exception("registry_add failed after retries")
 
     def faucet_check_time(self, address_to_check: str) -> dict:
         """Check if an address can receive funds at this time"""
@@ -294,16 +372,17 @@ class CryptoUtils:
         """Check what the threshold amount is for a faucet"""
         try:
             balance_threshold = self.faucet.functions.nextBalance(
-                _subject=address
-            ).call({'from': address})
+                _subject=Web3.to_checksum_address(address)
+            ).call({'from': Web3.to_checksum_address(address)})
             celo_amount = convert_wei_to_celo(balance_threshold)
             return celo_amount
         except Exception as e:
             print(f'Error calling nextBalance: {e}')
+            return 0.0
 
     def faucet_gimme(self, private_key: str, address: str) -> dict:
         """Call the gimme function for an account from the faucet"""
-        raw_balance = self.w3.eth.get_balance(address)
+        raw_balance = self.w3.eth.get_balance(Web3.to_checksum_address(address))
         balance = convert_wei_to_celo(raw_balance)
 
         faucet_thresh = self.faucet_balance_threshold(address)
@@ -333,14 +412,14 @@ class CryptoUtils:
                 'time': time_check['time_stamp'],
             }
 
-        nonce = self.w3.eth.get_transaction_count(address)
+        nonce = self.w3.eth.get_transaction_count(Web3.to_checksum_address(address))
         gas_price = self.w3.eth.gas_price
 
         gas_estimate = self.faucet.functions.gimme().estimate_gas({
-            'from': address,
+            'from': Web3.to_checksum_address(address),
         })
         tx = self.faucet.functions.gimme().build_transaction({
-            'from': address,
+            'from': Web3.to_checksum_address(address),
             'nonce': nonce,
             'gas': gas_estimate,
             'gasPrice': gas_price,
@@ -371,3 +450,11 @@ class CryptoUtils:
                 }
         except Exception as e:
             print(f'Error processing events: {e}')
+        return {
+            'balance': balance,
+            'threshold': faucet_thresh,
+            'amount': -1,
+            'success': False,
+            'time_check': False,
+            'time': -1
+        }

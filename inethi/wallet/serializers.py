@@ -2,6 +2,9 @@ from rest_framework import serializers
 from core.models import Wallet
 from utils.crypto import CryptoUtils, encrypt_private_key, decrypt_private_key
 from django.conf import settings
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class WalletSerializer(serializers.ModelSerializer):
@@ -35,6 +38,7 @@ class WalletSerializer(serializers.ModelSerializer):
 
         # Ensure wallet_info contains the expected keys
         if 'private_key' not in wallet_info or 'address' not in wallet_info:
+            logger.error("Wallet creation failed: missing keys in response")
             raise serializers.ValidationError(
                 "Wallet creation failed: missing keys in response"
             )
@@ -52,29 +56,56 @@ class WalletSerializer(serializers.ModelSerializer):
             'token': 'KRONE',
             'token_type': 'ERC-20',
         }
+        logger.info(f"Wallet data: {wallet_data}")
 
         if settings.FAUCET_AND_INDEX_ENABLED:
-            # Add the wallet to the account index for Krone
-            account_index_creator = Wallet.objects.get(
-                address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
-            )
-            p_key = decrypt_private_key(account_index_creator.private_key)
-            crypto_utils.registry_add(
-                private_key=p_key,
-                address_to_add=w_addr,
-            )
-            # send the account gas
-            faucet_creator = Wallet.objects.get(
-                address=settings.FAUCET_ADMIN_WALLET_ADDRESS
-            )
-            p_key = decrypt_private_key(faucet_creator.private_key)
-            crypto_utils.faucet_give_to(
-                private_key=p_key,
-                give_to_address=w_addr
-            )
+            try:
+                # Add the wallet to the account index for Krone
+                account_index_creator = Wallet.objects.get(  # type: ignore[attr-defined]
+                    address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
+                )
+                p_key_admin = decrypt_private_key(account_index_creator.private_key)
+                sender_address_admin = account_index_creator.address
+                # Fetch the starting nonce
+                nonce = crypto_utils.w3.eth.get_transaction_count(sender_address_admin)
+                # registry_add with nonce
+                crypto_utils.registry_add(
+                    private_key=p_key_admin,
+                    address_to_add=w_addr,
+                    nonce=nonce
+                )
+                nonce += 1  # increment for next tx
+                # send the account gas
+                faucet_creator = Wallet.objects.get(  # type: ignore[attr-defined]
+                    address=settings.FAUCET_ADMIN_WALLET_ADDRESS
+                )
+                p_key_faucet = decrypt_private_key(faucet_creator.private_key)
+                sender_address_faucet = faucet_creator.address
+                if sender_address_faucet == sender_address_admin:
+                    # use incremented nonce
+                    faucet_nonce = nonce
+                else:
+                    faucet_nonce = crypto_utils.w3.eth.get_transaction_count(
+                        sender_address_faucet
+                    )
+                    nonce = nonce + 1
+                crypto_utils.faucet_give_to(
+                    private_key=p_key_faucet,
+                    give_to_address=w_addr,
+                    nonce=faucet_nonce
+                )
+            except Exception as e:
+                logger.error(
+                    f"Error during wallet creation (registry/faucet): {e}"
+                )
+                raise serializers.ValidationError(
+                    f"Wallet creation failed: {e}"
+                )
 
         # Create the wallet
-        return Wallet.objects.create(**wallet_data)
+        return Wallet.objects.create(   # type: ignore[attr-defined]
+            **wallet_data
+        )
 
     def update(self, instance, validated_data):
         """

@@ -101,6 +101,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     def __str__(self):
         return self.username
 
+    class Meta:
+        permissions = (
+            ("network_admin", "Can administer the network"),
+        )
+
 
 class Wallet(models.Model):
     """Wallet Object"""

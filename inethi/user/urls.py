@@ -7,6 +7,17 @@ from . import views
 app_name = 'user'
 
 urlpatterns = [
+    path(
+        'users/<int:id>/',
+        views.RetrieveUserView.as_view(),
+        name="retrieve-user"
+    ),
+    path(
+        'network-admin/login/',
+        views.NetworkAdminLoginView.as_view(),
+        name='network-admin-login'
+    ),
+    path('search/', views.UserSearchView.as_view(), name='search'),
     path('create/', views.CreateUserView.as_view(), name='create'),
     path('token/', views.CreateTokenView.as_view(), name='token'),
     path('me/', views.ManageUserView.as_view(), name='me'),

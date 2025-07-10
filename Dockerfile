@@ -10,6 +10,9 @@ EXPOSE 8000
 
 ARG DEV=false
 
+# Install fping using Alpine's package manager
+RUN apk add --no-cache fping
+
 RUN python -m venv /py && \
     /py/bin/pip install --upgrade pip && \
     apk add --update --no-cache postgresql-client && \

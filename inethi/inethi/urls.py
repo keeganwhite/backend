@@ -39,4 +39,6 @@ urlpatterns = [
         'transaction.urls', namespace='transaction'
     )),
     path('api/v1/', include('radiusdesk.urls', namespace='radiusdesk')),
+    path('api/v1/', include('network.urls', namespace='network')),
+    path('api/v1/', include('reward.urls', namespace='reward')),
 ]

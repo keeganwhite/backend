@@ -30,13 +30,13 @@ services:
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
 
   db:
-    image: postgres:16.4-alpine
+    image: timescale/timescaledb:latest-pg17
     restart: unless-stopped
-    container_name: inethi-backend-db
+    container_name: inethi-backend-db-timescale
     env_file:
       - ./.env
     volumes:
-      - prod-db-data:/var/lib/postgresql/data
+      - prod-db-data-timescale:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=${DB_NAME:-devdb}
       - POSTGRES_USER=${DB_USER:-devuser}
@@ -45,6 +45,42 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.backenddb.entrypoints=websecure"
 
+  redis:
+    image: redis:alpine
+    container_name: inethi-backend-celery-redis
+
+  celery:
+    build:
+      context: .
+    env_file:
+      - ./.env
+    restart: always
+    command: celery -A inethi worker -l INFO
+    volumes:
+      - ./inethi:/inethi
+    environment:
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+    container_name: inethi-backend-celery
+    depends_on:
+      - redis
+      - db
+  celery_beat:
+    build:
+      context: .
+    env_file:
+      - ./.env
+    command: celery -A inethi beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - ./inethi:/inethi
+    environment:
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+    container_name: inethi-backend-celery-beat
+    depends_on:
+      - redis
+      - db
+
 
 networks:
   default:
@@ -52,4 +88,4 @@ networks:
       name: "inethi-bridge-traefik"
 
 volumes:
-  prod-db-data:
+  prod-db-data-timescale:

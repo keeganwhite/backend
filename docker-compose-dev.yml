@@ -1,7 +1,7 @@
 services:
   app:
     container_name: inethi-backend
-    restart: unless-stopped
+    restart: no
     env_file:
       - ./.env
     build:
@@ -26,13 +26,13 @@ services:
       - keycloak
 
   db:
-    image: postgres:16.4-alpine
-    restart: unless-stopped
-    container_name: inethi-backend-db
+    image: timescale/timescaledb:latest-pg17
+    restart: no
+    container_name: inethi-backend-db-timescale
     env_file:
       - ./.env
     volumes:
-      - dev-db-data:/var/lib/postgresql/data
+      - dev-db-data-timescale:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=${DB_NAME:-devdb}
       - POSTGRES_USER=${DB_USER:-devuser}
@@ -40,7 +40,7 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:25.0.6
-    restart: unless-stopped
+    restart: no
     container_name: inethi-keycloak
     env_file:
       - ./.env
@@ -54,6 +54,44 @@ services:
       - KEYCLOAK_ADMIN=${KEYCLOAK_MASTER_ADMIN:-devuser}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_MASTER_ADMIN_PASSWORD:-devpass}
 
+  redis:
+    image: redis:alpine
+    restart: no
+    container_name: inethi-backend-celery-redis
+
+  celery:
+    build:
+      context: .
+    env_file:
+      - ./.env
+    restart: no
+    command: celery -A inethi worker -l INFO
+    volumes:
+      - ./inethi:/inethi
+    environment:
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+    container_name: inethi-backend-celery
+    depends_on:
+      - redis
+      - db
+  celery_beat:
+    build:
+      context: .
+    env_file:
+      - ./.env
+    command: celery -A inethi beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    restart: no
+    volumes:
+      - ./inethi:/inethi
+    environment:
+      - CELERY_BROKER=redis://redis:6379/0
+      - CELERY_BACKEND=redis://redis:6379/0
+    container_name: inethi-backend-celery-beat
+    depends_on:
+      - redis
+      - db
+
 volumes:
-  dev-db-data:
+  dev-db-data-timescale:
   dev-keycloak-data:

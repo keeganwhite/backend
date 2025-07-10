@@ -11,6 +11,8 @@ from rest_framework.exceptions import PermissionDenied
 from django.conf import settings
 
 from utils.crypto import decrypt_private_key
+from utils.radius_desk import check_token, login, create_voucher
+from radiusdesk.models import RadiusDeskInstance, Voucher, RadiusDeskProfile
 
 
 class WalletViewSet(viewsets.ModelViewSet):
@@ -408,4 +410,176 @@ class WalletViewSet(viewsets.ModelViewSet):
                 )
         return Response(
             {'detail': 'Wallet not found.'}, status=status.HTTP_404_NOT_FOUND
+        )
+
+    @action(detail=False, methods=['post'], url_path='purchase-voucher')
+    def purchase_voucher(self, request):
+        """
+        Purchase a voucher by taking a crypto payment.
+
+        Expects:
+          - radius_desk_instance_pk: PK of the RadiusDeskInstance.
+          - voucher_profile_pk: PK of the Voucher Profile (RadiusDeskProfile).
+        """
+        wallet_exists = Wallet.objects.filter(user=request.user).exists()
+        if not wallet_exists:
+            return Response(
+                {'detail': 'Wallet not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        wallet = Wallet.objects.filter(user=request.user).first()
+
+        # Validate input
+        radius_desk_instance_pk = request.data.get('radius_desk_instance_pk')
+        voucher_profile_pk = request.data.get('voucher_profile_pk')
+
+        if not radius_desk_instance_pk or not voucher_profile_pk:
+            return Response(
+                {
+                    "error": "radius instancee, voucher, amount required."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Retrieve the RadiusDeskInstance and Voucher Profile
+        try:
+            instance = RadiusDeskInstance.objects.get(
+                pk=radius_desk_instance_pk
+            )
+            voucher_profile = RadiusDeskProfile.objects.get(
+                pk=voucher_profile_pk
+            )
+        except (
+            RadiusDeskInstance.DoesNotExist,
+            RadiusDeskProfile.DoesNotExist
+        ) as e:
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Check that the instance accepts crypto payments
+        if not instance.accepts_crypto:
+            return Response(
+                {
+                    "error": "This RadiusDeskInstance does not accept crypto.",
+                    "accepts_crypto": instance.accepts_crypto
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check if the network admin has a wallet address
+        network_admin = instance.administrators.first()
+        admin_wallet = Wallet.objects.filter(user=network_admin).first()
+        if not admin_wallet:
+            return Response(
+                {"error": "Network admin does not have a wallet."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Determine the cost of the voucher
+        cost = voucher_profile.cost
+        if cost <= 0:
+            return Response(
+                {"error": "Invalid voucher cost."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Decrypt the admin wallet's private key
+        try:
+            decrypted_private_key = decrypt_private_key(wallet.private_key)
+        except Exception:
+            return Response(
+                {
+                    "error": "Failed to decrypt wallet private key.",
+                    "private_key": wallet.private_key
+                },
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Validate or refresh the instance token if necessary
+        if not instance.token or not check_token(
+            instance.token, instance.base_url
+        ):
+            instance.token = login(
+                username=instance.username,
+                password=instance.password,
+                base_url=instance.base_url
+            )
+            instance.save()
+
+        # Generate a voucher code via the RadiusDesk API
+        try:
+            voucher_code = create_voucher(
+                token=instance.token,
+                base_url=instance.base_url,
+                cloud_id=voucher_profile.cloud.radius_desk_id,
+                realm_id=voucher_profile.realm.radius_desk_id,
+                profile_id=voucher_profile.radius_desk_id,
+                quantity=1
+            )
+
+        except Exception as e:
+            return Response(
+                {
+                    "error": f"Failed to create voucher code: {str(e)}",
+                    "instance": instance.token,
+                    "base_url": instance.base_url
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Perform the crypto transaction for the voucher cost
+        try:
+            tx_receipt = self.crypto_utils.send_to_wallet_address(
+                wallet.address,
+                decrypted_private_key,
+                admin_wallet.address,
+                float(cost)
+            )
+        except Exception as e:
+            return Response(
+                {"error": f"Transaction failed: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Record the voucher in the database
+        Voucher.objects.create(
+            voucher_code=voucher_code,
+            realm=voucher_profile.realm,
+            cloud=voucher_profile.cloud,
+            radius_desk_instance=instance,
+            user=request.user,
+            wallet_address=wallet.address
+        )
+
+        # Record the transaction
+        Transaction.objects.create(
+            sender=request.user,
+            recipient_address=admin_wallet.address,
+            recipient=network_admin,
+            amount=float(cost),
+            category="INTERNET_COUPON",
+            transaction_hash=tx_receipt.transactionHash.hex(),
+            block_number=tx_receipt.blockNumber,
+            block_hash=tx_receipt.blockHash.hex(),
+            gas_used=tx_receipt.gasUsed,
+            token="KRONE",
+        )
+
+        tx_receipt_dict = {
+            'transactionHash': tx_receipt.transactionHash.hex(),
+            'blockHash': tx_receipt.blockHash.hex(),
+            'blockNumber': tx_receipt.blockNumber,
+            'gasUsed': tx_receipt.gasUsed,
+            'status': tx_receipt.status,
+            'transactionIndex': tx_receipt.transactionIndex
+        }
+
+        return Response(
+            {
+                "voucher": voucher_code,
+                "transaction_receipt": tx_receipt_dict
+            },
+            status=status.HTTP_201_CREATED
         )

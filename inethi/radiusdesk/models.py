@@ -4,12 +4,18 @@ from django.db import models
 
 class RadiusDeskInstance(models.Model):
     name = models.CharField(max_length=255, unique=True)
-    base_url = models.URLField(
-        help_text="Base URL for the RADIUSdesk instance"
-    )
+    base_url = models.URLField(help_text="Base URL for the RADIUSdesk instance")
     username = models.CharField(max_length=255)
     password = models.CharField(max_length=255)
     token = models.CharField(max_length=255, blank=True, default="")
+    # Link admin users to a RadiusDeskInstance
+    administrators = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        blank=True,
+        related_name="admin_radiusdesk_instances",
+        help_text="Users who have network administrator rights for this instance"
+    )
+    accepts_crypto = models.BooleanField(default=False)
 
     def __str__(self):
         return self.name
@@ -71,6 +77,7 @@ class RadiusDeskProfile(models.Model):
     speed_limit_mbs = models.FloatField(default=0)
     limit_session_enabled = models.BooleanField(default=False)
     session_limit = models.IntegerField(default=0)
+    cost = models.FloatField(default=0)
 
     def __str__(self):
         return self.name
