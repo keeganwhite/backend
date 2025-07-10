@@ -35,13 +35,17 @@ jobs:
           echo "CONTRACT_ADDRESS=0x8Bab657c88eb3c724486D113E650D2c659aa23d2" >> .env
           echo "REGISTRY_ADDRESS=0x9b1a3F8FadD0dc86FBae5Cf66Fa682fDcd84a9b0" >> .env
           echo "FAUCET_ADDRESS=0xB821E49ADB53F0AbeD834278d5dFc57901c30Eea" >> .env
-          echo "ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS=<SMART_CONTRACT_CREATOR>" >> .env
+          echo "ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS=0x1234567890123456789012345678901234567890" >> .env
           echo "FAUCET_AND_INDEX_ENABLED=True" >> .env
-          echo "FAUCET_ADMIN_WALLET_ADDRESS=<SMART_CONTRACT_CREATOR>" >> .env
+          echo "FAUCET_ADMIN_WALLET_ADDRESS=0x1234567890123456789012345678901234567890" >> .env
           echo "ALLOWED_HOSTS=10.0.2.2,example.com" >> .env
           echo "CSRF_TRUSTED_ORIGINS=https://10.0.2.2,https://example.com" >> .env
           echo "SECRET_KEY=secret" >> .env
           echo "DEBUG=True" >> .env
+          echo "RADIUS_DESK_USERNAME=root" >> .env
+          echo "RADIUS_DESK_PASSWORD=admin" >> .env
+          echo "CELERY_BROKER_URL=redis://redis:6379/0" >> .env
+          echo "CI=True" >> .env
       - name: Lint
         run: docker compose -f docker-compose-dev.yml run --rm app sh -c "flake8"
       - name: Tests
