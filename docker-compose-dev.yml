@@ -1,6 +1,6 @@
 services:
   app:
-    container_name: inethi-backend
+    container_name: inethi-backend-dev
     restart: no
     env_file:
       - ./.env
@@ -30,11 +30,11 @@ services:
   db:
     image: timescale/timescaledb:latest-pg17
     restart: no
-    container_name: inethi-backend-db-timescale
+    container_name: inethi-backend-db-timescale-dev
     env_file:
       - ./.env
     volumes:
-      - dev-db-data-timescale:/var/lib/postgresql/data
+      - dev-db-data-timescale-dev:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=${DB_NAME:-devdb}
       - POSTGRES_USER=${DB_USER:-devuser}
@@ -44,7 +44,7 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:25.0.6
     restart: no
-    container_name: inethi-keycloak
+    container_name: inethi-keycloak-dev
     env_file:
       - ./.env
     ports:
@@ -52,7 +52,7 @@ services:
     command:
       - start-dev
     volumes:
-      - dev-keycloak-data:/opt/keycloak
+      - dev-keycloak-data-dev:/opt/keycloak
     environment:
       - KEYCLOAK_ADMIN=${KEYCLOAK_MASTER_ADMIN:-devuser}
       - KEYCLOAK_ADMIN_PASSWORD=${KEYCLOAK_MASTER_ADMIN_PASSWORD:-devpass}
@@ -60,7 +60,7 @@ services:
   redis:
     image: redis:alpine
     restart: no
-    container_name: inethi-backend-celery-redis
+    container_name: inethi-backend-celery-redis-dev
 
   celery:
     build:
@@ -74,7 +74,7 @@ services:
     environment:
       - CELERY_BROKER=redis://redis:6379/0
       - CELERY_BACKEND=redis://redis:6379/0
-    container_name: inethi-backend-celery
+    container_name: inethi-backend-celery-dev
     depends_on:
       - redis
       - db
@@ -90,11 +90,11 @@ services:
     environment:
       - CELERY_BROKER=redis://redis:6379/0
       - CELERY_BACKEND=redis://redis:6379/0
-    container_name: inethi-backend-celery-beat
+    container_name: inethi-backend-celery-beat-dev
     depends_on:
       - redis
       - db
 
 volumes:
-  dev-db-data-timescale:
-  dev-keycloak-data:
+  dev-db-data-timescale-dev:
+  dev-keycloak-data-dev:
