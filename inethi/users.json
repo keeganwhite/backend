@@ -2,11 +2,15 @@
   {
     "username": "network_admin_1",
     "password": "password1",
+    "first_name": "Network",
+    "last_name": "Admin1",
     "email": "network_admin_1@inethi.com"
   },
   {
     "username": "network_admin_2",
     "password": "password2",
+    "first_name": "Network",
+    "last_name": "Admin2",
     "email": "network_admin_2@inethi.com"
   }
 ]
