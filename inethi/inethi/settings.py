@@ -28,10 +28,10 @@ if os.path.exists(os.path.join(BASE_DIR, ".env")):
 # See https://docs.djangoproject.com/en/5.1/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY=env("SECRET_KEY")
+SECRET_KEY = env("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG=env("DEBUG")
+DEBUG = env("DEBUG")
 
 CORS_ALLOW_CREDENTIALS = True
 CORS_ALLOWED_ORIGINS = env("CORS_ALLOWED_ORIGINS")
@@ -59,7 +59,7 @@ INSTALLED_APPS = [
     'radiusdesk',
     'network',
     'api_key',
-     'reward'
+    'reward'
 ]
 
 MIDDLEWARE = [
@@ -139,7 +139,7 @@ TIME_ZONE = 'Africa/Johannesburg'
 USE_I18N = True
 
 USE_TZ = True
-CELERY_BROKER_URL=env("CELERY_BROKER_URL")
+CELERY_BROKER_URL = env("CELERY_BROKER_URL")
 
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
@@ -184,7 +184,7 @@ with open(krone_abi_fp, "r", encoding="utf-8") as abi_file:
     KRONE_CONTRACT_ABI = json.load(abi_file)
 WALLET_ENCRYPTION_KEY = env("WALLET_ENCRYPTION_KEY")
 BLOCKCHAIN_PROVIDER_URL = env("BLOCKCHAIN_PROVIDER_URL")
-CONTRACT_ADDRESS=env("CONTRACT_ADDRESS")
+CONTRACT_ADDRESS = env("CONTRACT_ADDRESS")
 
 SPECTACULAR_SETTINGS = {
     'TITLE': 'iNethi API',
@@ -198,14 +198,14 @@ SPECTACULAR_SETTINGS = {
 FAUCET_ABI_FILE_PATH = os.path.join(BASE_DIR, "contracts/faucet_abi.json")
 REGISTRY_ABI_FILE_PATH = os.path.join(BASE_DIR, "contracts/registry_abi.json")
 REGISTRY_ADDRESS = env("REGISTRY_ADDRESS")
-FAUCET_ADDRESS =env("FAUCET_ADDRESS")
+FAUCET_ADDRESS = env("FAUCET_ADDRESS")
 
 # owner of smart contracts
-ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS=env("ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS")
-FAUCET_ADMIN_WALLET_ADDRESS=env("FAUCET_ADMIN_WALLET_ADDRESS")
+ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS = env("ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS")
+FAUCET_ADMIN_WALLET_ADDRESS = env("FAUCET_ADMIN_WALLET_ADDRESS")
 
 # Enable account index and faucet
-FAUCET_AND_INDEX_ENABLED=env("FAUCET_AND_INDEX_ENABLED")
+FAUCET_AND_INDEX_ENABLED = env("FAUCET_AND_INDEX_ENABLED")
 
 # Logging configuration
 # Use /tmp directory for logs in CI environment
@@ -267,7 +267,7 @@ if not CI:
         'file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': os.path.join(BASE_DIR, 'errors.log'),
-            'maxBytes': 1024*1024*50,  # 50MB
+            'maxBytes': 1024 * 1024 * 50,  # 50MB
             'backupCount': 5,
             'formatter': 'verbose',
             'level': 'ERROR',
@@ -275,7 +275,7 @@ if not CI:
         'wallet_debug_file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': os.path.join(BASE_DIR, 'debug.log'),
-            'maxBytes': 1024*1024*50,  # 50MB
+            'maxBytes': 1024 * 1024 * 50,  # 50MB
             'backupCount': 5,
             'formatter': 'verbose',
             'level': 'INFO',
@@ -283,7 +283,7 @@ if not CI:
         'rewards_file': {
             'class': 'logging.handlers.RotatingFileHandler',
             'filename': os.path.join(BASE_DIR, 'rewards.log'),
-            'maxBytes': 1024*1024*50,  # 50MB
+            'maxBytes': 1024 * 1024 * 50,  # 50MB
             'backupCount': 15,
             'formatter': 'verbose',
             'level': 'INFO',
