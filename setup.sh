@@ -343,8 +343,8 @@ print_color $BLUE "Running management commands to populate the database..."
 
 # Create users from JSON
 print_color $BLUE "Creating users from users.json..."
-if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_users_from_json inethi/users.json 2>/dev/null || \
-   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_users_from_json inethi/users.json 2>/dev/null; then
+if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_users_from_json users.json 2>/dev/null || \
+   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_users_from_json users.json 2>/dev/null; then
     print_color $GREEN "✓ Users created successfully"
 else
     print_color $YELLOW "Warning: Failed to create users (they might already exist)"
@@ -352,8 +352,8 @@ fi
 
 # Create smart contracts from JSON
 print_color $BLUE "Creating smart contracts from smart_contracts.json..."
-if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_smart_contracts_from_json inethi/smart_contracts.json 2>/dev/null || \
-   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_smart_contracts_from_json inethi/smart_contracts.json 2>/dev/null; then
+if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_smart_contracts_from_json smart_contracts.json 2>/dev/null || \
+   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_smart_contracts_from_json smart_contracts.json 2>/dev/null; then
     print_color $GREEN "✓ Smart contracts created successfully"
 else
     print_color $YELLOW "Warning: Failed to create smart contracts (they might already exist)"
@@ -361,8 +361,8 @@ fi
 
 # Create RADIUSdesk instances from JSON
 print_color $BLUE "Creating RADIUSdesk instances from sample_radiusdesk_config.json..."
-if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_radiusdesk_from_json inethi/sample_radiusdesk_config.json 2>/dev/null || \
-   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_radiusdesk_from_json inethi/sample_radiusdesk_config.json 2>/dev/null; then
+if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_radiusdesk_from_json sample_radiusdesk_config.json 2>/dev/null || \
+   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_radiusdesk_from_json sample_radiusdesk_config.json 2>/dev/null; then
     print_color $GREEN "✓ RADIUSdesk instances created successfully"
 else
     print_color $YELLOW "Warning: Failed to create RADIUSdesk instances (they might already exist)"
@@ -370,8 +370,8 @@ fi
 
 # Create superuser
 print_color $BLUE "Creating superuser..."
-if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser --noinput 2>/dev/null || \
-   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser --noinput 2>/dev/null; then
+if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser 2>/dev/null || \
+   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser 2>/dev/null; then
     print_color $GREEN "✓ Superuser created successfully"
 else
     print_color $YELLOW "Warning: Failed to create superuser (might already exist or need manual creation)"
