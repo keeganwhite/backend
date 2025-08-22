@@ -250,22 +250,24 @@ class Command(BaseCommand):
                                             })
                                         else:
                                             # Create profile in database
+                                            defaults = {
+                                                'radius_desk_id': profile_radius_desk_id,
+                                                'data_limit_enabled': profile_data.get('data_limit_enabled', False),
+                                                'data_limit_gb': profile_data.get('data_limit_gb', 0),
+                                                'data_limit_reset': profile_data.get('data_limit_reset', 'never'),
+                                                'speed_limit_enabled': profile_data.get('speed_limit_enabled', False),
+                                                'speed_limit_mbs': profile_data.get('speed_limit_mbs', 0),
+                                                'limit_session_enabled': profile_data.get(
+                                                    'limit_session_enabled', False),
+                                                'session_limit': profile_data.get('session_limit', 0),
+                                                'cost': profile_data.get('cost', 0)
+                                            }
                                             profile, profile_created = RadiusDeskProfile.objects.get_or_create(
                                                 name=profile_name,
                                                 realm=realm,
                                                 cloud=cloud,
                                                 radius_desk_instance=instance,
-                                                defaults={
-                                                    'radius_desk_id': profile_radius_desk_id,
-                                                    'data_limit_enabled': profile_data.get('data_limit_enabled', False),
-                                                    'data_limit_gb': profile_data.get('data_limit_gb', 0),
-                                                    'data_limit_reset': profile_data.get('data_limit_reset', 'never'),
-                                                    'speed_limit_enabled': profile_data.get('speed_limit_enabled', False),
-                                                    'speed_limit_mbs': profile_data.get('speed_limit_mbs', 0),
-                                                    'limit_session_enabled': profile_data.get('limit_session_enabled', False),
-                                                    'session_limit': profile_data.get('session_limit', 0),
-                                                    'cost': profile_data.get('cost', 0)
-                                                }
+                                                defaults=defaults
                                             )
 
                                             if profile_created:
@@ -319,14 +321,15 @@ class Command(BaseCommand):
                 errors.append(f'Instance {i+1}: {str(e)}')
 
         # Summary
-        self.stdout.write('\n' + '='*50)
+        self.stdout.write('\n' + '=' * 50)
         self.stdout.write('SUMMARY')
-        self.stdout.write('='*50)
+        self.stdout.write('=' * 50)
 
         if created_objects:
             self.stdout.write(f'\nCreated/Found {len(created_objects)} objects:')
             for obj in created_objects:
-                status_color = self.style.SUCCESS if obj['status'] == 'created' else self.style.WARNING
+                status_color = (self.style.SUCCESS if obj['status'] == 'created'
+                                else self.style.WARNING)
                 self.stdout.write(
                     status_color(f"  {obj['type'].title()}: {obj['name']} ({obj['status']})")
                 )

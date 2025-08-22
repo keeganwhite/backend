@@ -8,6 +8,7 @@ class IsSuperUserOrReadOnly(BasePermission):
     """
     # Allow create, update, and delete for superusers only
     # Allow read-only methods for all authenticated users
+
     def has_permission(self, request, view):
         if request.method in SAFE_METHODS:
             return request.user.is_authenticated

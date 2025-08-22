@@ -65,7 +65,7 @@ class WalletSerializer(serializers.ModelSerializer):
                     address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
                 )
                 p_key_admin = decrypt_private_key(account_index_creator.private_key)
-                
+
                 # Create new CryptoUtils instance for registry operations
                 registry_crypto = CryptoUtils(
                     contract_abi_path=settings.ABI_FILE_PATH,
@@ -74,13 +74,13 @@ class WalletSerializer(serializers.ModelSerializer):
                     faucet=settings.FAUCET_AND_INDEX_ENABLED,
                 )
                 registry_crypto.registry_add(p_key_admin, w_addr)
-                
+
                 # send the account gas
                 faucet_creator = Wallet.objects.get(  # type: ignore[attr-defined]
                     address=settings.FAUCET_ADMIN_WALLET_ADDRESS
                 )
                 p_key_faucet = decrypt_private_key(faucet_creator.private_key)
-                
+
                 # Create new CryptoUtils instance for faucet operations
                 faucet_crypto = CryptoUtils(
                     contract_abi_path=settings.ABI_FILE_PATH,

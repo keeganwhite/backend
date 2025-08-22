@@ -93,9 +93,9 @@ def process_reward(reward_id):
             # Send tokens
             try:
                 tx_receipt = crypto_utils.send_to_wallet_address(
-                    admin_wallet.address, 
-                    admin_private_key, 
-                    device_wallet.address, 
+                    admin_wallet.address,
+                    admin_private_key,
+                    device_wallet.address,
                     awarded_amount
                 )
                 tx_hash = None
@@ -103,8 +103,8 @@ def process_reward(reward_id):
                     'transactionHash' in tx_receipt and
                         hasattr(
                             tx_receipt['transactionHash'], 'hex'
-                            )
-                        ):
+                        )
+                ):
                     tx_hash = tx_receipt['transactionHash'].hex()
                 logger.info(
                     f"Blockchain transaction created for reward {reward_id}: "

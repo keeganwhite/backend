@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 class Command(BaseCommand):
     """Django command to create users from JSON file with wallets."""
-    
+
     help = 'Creates users from JSON file with wallets and network admin permissions'
 
     def add_arguments(self, parser):
@@ -76,7 +76,7 @@ class Command(BaseCommand):
                         address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
                     )
                     p_key_admin = decrypt_private_key(account_index_creator.private_key)
-                    
+
                     # Create new CryptoUtils instance for registry operations
                     registry_crypto = CryptoUtils(
                         contract_abi_path=settings.ABI_FILE_PATH,
@@ -84,20 +84,20 @@ class Command(BaseCommand):
                         registry=settings.FAUCET_AND_INDEX_ENABLED,
                         faucet=settings.FAUCET_AND_INDEX_ENABLED,
                     )
-                    
+
                     # Add the wallet to the account index for Krone
                     registry_crypto.registry_add(p_key_admin, w_addr)
-                    
+
                     # send the account gas
                     faucet_creator = Wallet.objects.get(
                         address=settings.FAUCET_ADMIN_WALLET_ADDRESS
                     )
                     p_key_faucet = decrypt_private_key(faucet_creator.private_key)
-                    
+
                     # Add small delay between transactions to avoid nonce conflicts
                     import time
                     time.sleep(1.0)
-                    
+
                     # Create new CryptoUtils instance for faucet operations
                     faucet_crypto = CryptoUtils(
                         contract_abi_path=settings.ABI_FILE_PATH,
@@ -113,7 +113,7 @@ class Command(BaseCommand):
 
             # Create the wallet
             return Wallet.objects.create(**wallet_data)
-            
+
         except Exception as e:
             logger.error(f"Error creating wallet for user {user.username}: {e}")
             return None
@@ -122,11 +122,11 @@ class Command(BaseCommand):
         """Entry point for Django management command."""
         json_file = options['json_file']
         dry_run = options['dry_run']
-        
+
         # Check if file exists
         if not os.path.exists(json_file):
             raise CommandError(f'JSON file "{json_file}" does not exist.')
-        
+
         # Read and parse JSON file
         try:
             with open(json_file, 'r') as f:
@@ -135,40 +135,40 @@ class Command(BaseCommand):
             raise CommandError(f'Invalid JSON format: {str(e)}')
         except Exception as e:
             raise CommandError(f'Error reading JSON file: {str(e)}')
-        
+
         # Validate JSON structure
         if not isinstance(users_data, list):
             raise CommandError('JSON file must contain a list of user objects.')
-        
+
         if dry_run:
             self.stdout.write(self.style.WARNING('DRY RUN MODE - No users will be created'))
-        
+
         created_users = []
         errors = []
-        
+
         for i, user_data in enumerate(users_data):
             try:
                 # Validate required fields (wallet_address and private_key are now optional)
                 required_fields = ['username', 'password', 'email']
                 missing_fields = [field for field in required_fields if field not in user_data]
-                
+
                 if missing_fields:
                     errors.append(f'User {i+1}: Missing required fields: {", ".join(missing_fields)}')
                     continue
-                
+
                 username = user_data['username']
                 password = user_data['password']
                 email = user_data['email']
-                
+
                 # Optional fields
                 first_name = user_data.get('first_name', '')
                 last_name = user_data.get('last_name', '')
                 phone_number = user_data.get('phone_number', '')
-                
+
                 # Wallet fields (optional - will be auto-generated if not provided)
                 wallet_address = user_data.get('wallet_address')
                 private_key = user_data.get('private_key')
-                
+
                 if dry_run:
                     if wallet_address:
                         self.stdout.write(
@@ -179,23 +179,23 @@ class Command(BaseCommand):
                             f'Would create user: {username} ({email}) with auto-generated wallet'
                         )
                     continue
-                
+
                 # Create user and wallet in transaction
                 with transaction.atomic():
                     # Check if user already exists
                     if User.objects.filter(username=username).exists():
                         errors.append(f'User {i+1}: Username "{username}" already exists')
                         continue
-                    
+
                     if User.objects.filter(email=email).exists():
                         errors.append(f'User {i+1}: Email "{email}" already exists')
                         continue
-                    
+
                     # Check if wallet address already exists (only if provided)
                     if wallet_address and Wallet.objects.filter(address=wallet_address).exists():
                         errors.append(f'User {i+1}: Wallet address "{wallet_address}" already exists')
                         continue
-                    
+
                     # Create user
                     user = User.objects.create_user(
                         email=email,
@@ -205,14 +205,14 @@ class Command(BaseCommand):
                         last_name=last_name,
                         phone_number=phone_number
                     )
-                    
+
                     # Mark as network admin
                     user.user_permissions.add(
                         User._meta.get_field('user_permissions').related_model.objects.get(
                             codename='network_admin'
                         )
                     )
-                    
+
                     # Create wallet
                     if wallet_address and private_key:
                         # Use provided wallet details
@@ -232,13 +232,13 @@ class Command(BaseCommand):
                         if not wallet:
                             errors.append(f'User {i+1}: Failed to create wallet for user "{username}"')
                             continue
-                    
+
                     created_users.append({
                         'username': username,
                         'email': email,
                         'wallet_address': wallet.address
                     })
-                    
+
                     if wallet_address:
                         self.stdout.write(
                             self.style.SUCCESS(
@@ -251,11 +251,11 @@ class Command(BaseCommand):
                                 f'Created user "{username}" with auto-generated wallet {wallet.address}'
                             )
                         )
-                    
+
             except Exception as e:
                 errors.append(f'User {i+1}: {str(e)}')
                 continue
-        
+
         # Summary
         if dry_run:
             self.stdout.write(
@@ -265,12 +265,12 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f'Successfully created {len(created_users)} users')
             )
-            
+
             if created_users:
                 self.stdout.write('\nCreated users:')
                 for user in created_users:
                     self.stdout.write(f'  - {user["username"]} ({user["email"]})')
-        
+
         if errors:
             self.stdout.write('\nErrors:')
             for error in errors:

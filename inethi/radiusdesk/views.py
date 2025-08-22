@@ -245,7 +245,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         vouchers = Voucher.objects.filter(user=user).order_by('-created_at')
-        
+
         # Use pagination
         paginator = VoucherPagination()
         page = paginator.paginate_queryset(vouchers, request)
@@ -313,7 +313,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
             vouchers = vouchers.filter(user__username__icontains=username)
 
         vouchers = vouchers.order_by('-created_at')
-        
+
         # Use pagination
         paginator = VoucherPagination()
         page = paginator.paginate_queryset(vouchers, request)
@@ -407,7 +407,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                 voucher_codes = [voucher['name'] for voucher in voucher_response['data']]
 
             created_vouchers = []
-            
+
             if sender_address and recipient_address and amount and token:
                 Transaction.objects.create(
                     recipient_address=recipient_address,
@@ -416,7 +416,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                     category=category,
                     token=token
                 )
-                
+
                 # Create a voucher record for each voucher code
                 for voucher_code in voucher_codes:
                     voucher_obj = Voucher.objects.create(
@@ -472,7 +472,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
             vouchers = Voucher.objects.filter(
                 wallet_address=wallet_address
             ).order_by('-created_at')
-            
+
             # Use pagination
             paginator = VoucherPagination()
             page = paginator.paginate_queryset(vouchers, request)
@@ -510,7 +510,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                         "error":
                             "Missing required parameters: "
                             "radius_desk_instance_pk and radius_desk_cloud_pk"
-                     },
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -522,7 +522,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                     and not request.user.is_superuser):
                 if not radius_desk_instance_db.administrators.filter(
                     pk=request.user.pk
-                        ).exists():
+                ).exists():
                     return Response(
                         {"error": "Unauthorized for this RadiusDeskInstance."},
                         status=status.HTTP_403_FORBIDDEN
@@ -601,7 +601,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                         "error":
                             "Missing required parameters: "
                             "radius_desk_instance_pk and radius_desk_cloud_pk"
-                     },
+                    },
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
@@ -613,7 +613,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                     and not request.user.is_superuser):
                 if not radius_desk_instance_db.administrators.filter(
                     pk=request.user.pk
-                        ).exists():
+                ).exists():
                     return Response(
                         {"error": "Unauthorized for this RadiusDeskInstance."},
                         status=status.HTTP_403_FORBIDDEN
@@ -624,7 +624,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                 radius_desk_instance=radius_desk_instance_pk,
                 cloud=radius_desk_cloud_pk
             ).order_by('-created_at')
-            
+
             # Use pagination
             paginator = VoucherPagination()
             page = paginator.paginate_queryset(vouchers, request)

@@ -182,10 +182,10 @@ def aggregate_ping_view(request):
     valid_aggregations = {
         '15m': 'network_ping_aggregate_15m',
         '60m': 'network_ping_aggregate_60m',
-        '6h':  'network_ping_aggregate_6h',
+        '6h': 'network_ping_aggregate_6h',
         '12h': 'network_ping_aggregate_12h',
         '24h': 'network_ping_aggregate_24h',
-        '7d':  'network_ping_aggregate_7d',
+        '7d': 'network_ping_aggregate_7d',
         '30d': 'network_ping_aggregate_30d',
         '90d': 'network_ping_aggregate_90d',
         '365d': 'network_ping_aggregate_365d',
@@ -215,7 +215,7 @@ def aggregate_ping_view(request):
             try:
                 host_ids = [
                     int(x.strip()) for x in host_ids_param.split(',') if x.strip()
-                    ]
+                ]
             except ValueError:
                 return Response(
                     {"error": "host_ids must be a comma-separated list of integers."},
@@ -335,7 +335,7 @@ def aggregate_uptime_view(request):
     if network_id:
         all_host_ids = set(
             Host.objects.filter(network=network).values_list('id', flat=True)
-            )
+        )
     elif host_ids:
         all_host_ids = set(host_ids)
     else:

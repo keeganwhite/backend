@@ -157,7 +157,7 @@ class SmartContractViewSet(viewsets.ModelViewSet):
                 {
                     'contract_type':
                         'You cannot be added to this contract type.'
-                 },
+                },
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -416,7 +416,6 @@ class SmartContractViewSet(viewsets.ModelViewSet):
         if wallet_exists:
             try:
                 wallet = Wallet.objects.get(user=request.user)
-                address = wallet.address
 
                 decrypted_private_key = decrypt_private_key(
                     wallet.private_key
@@ -429,10 +428,10 @@ class SmartContractViewSet(viewsets.ModelViewSet):
                     registry=settings.FAUCET_AND_INDEX_ENABLED,
                     faucet=settings.FAUCET_AND_INDEX_ENABLED,
                 )
-                
+
                 # Call faucet gimme (new method returns transaction receipt)
                 receipt = crypto_utils.faucet_gimme(decrypted_private_key, wallet.address)
-                
+
                 # For now, return success since the new method doesn't return detailed info
                 # You may want to add additional checks here if needed
                 return Response(
@@ -447,7 +446,7 @@ class SmartContractViewSet(viewsets.ModelViewSet):
             except Exception as e:
                 return Response(
                     {
-                      'error': f'Failed to call gimme: {e}.'
+                        'error': f'Failed to call gimme: {e}.'
                     },
                     status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )

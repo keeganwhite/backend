@@ -66,7 +66,7 @@ class CryptoUtils:
     ):
         self.w3 = Web3(Web3.HTTPProvider(settings.BLOCKCHAIN_PROVIDER_URL))
         self.contract = load_contract(contract_abi_path, contract_address)
-        
+
         if registry:
             self.registry = load_contract(
                 settings.REGISTRY_ABI_FILE_PATH,
@@ -74,7 +74,7 @@ class CryptoUtils:
             )
         else:
             self.registry = None
-            
+
         if faucet:
             self.faucet = load_contract(
                 settings.FAUCET_ABI_FILE_PATH,
@@ -151,10 +151,10 @@ class CryptoUtils:
         # Calculate token amount adjusted for decimals
         decimals = self.contract.functions.decimals().call()
         token_amount = int(amount * (10**decimals))
-        
+
         attempt = 0
         logger.info(f"send_to_wallet_address: {to_address} from {from_address} for {amount}")
-        
+
         while attempt < max_retries:
             try:
                 # Estimate gas and get current gas price
@@ -170,13 +170,13 @@ class CryptoUtils:
                     f"transfering to {to_address} from {from_address} for {token_amount} "
                     f"with gas {gas} and gas_price {gas_price}"
                 )
-                
+
                 # Get nonce if not provided
                 if nonce is None:
                     nonce_to_use = self.w3.eth.get_transaction_count(Web3.to_checksum_address(from_address))
                 else:
                     nonce_to_use = nonce
-                
+
                 # Prepare and sign the transaction
                 transfer = self.contract.functions.transfer(
                     Web3.to_checksum_address(to_address), token_amount
@@ -196,7 +196,7 @@ class CryptoUtils:
                         f"send_to_wallet_address: {to_address}, nonce {nonce} failed."
                     )
                     raise Exception("Transaction failed")
-                    
+
             except Exception as e:
                 logger.error(f"send_to_wallet_address attempt {attempt+1} failed: {e}")
                 # Check for nonce error
@@ -208,7 +208,7 @@ class CryptoUtils:
                     attempt += 1
                     continue
                 raise
-                
+
         raise Exception("send_to_wallet_address failed after retries")
 
     # ---------------- Faucet ---------------- #
@@ -226,12 +226,12 @@ class CryptoUtils:
         """
         if not self.faucet:
             raise Exception("Faucet contract not loaded")
-            
+
         account = self.w3.eth.account.from_key(private_key)
         sender_address = account.address
         attempt = 0
         logger.info(f"faucet_give_to: {give_to_address} with nonce {nonce}")
-        
+
         while attempt < max_retries:
             try:
                 if nonce is None:
@@ -240,14 +240,14 @@ class CryptoUtils:
                     )
                 else:
                     nonce_to_use = nonce
-                    
+
                 gas_price = self.w3.eth.gas_price
                 gas_estimate = self.faucet.functions.giveTo(
                     Web3.to_checksum_address(give_to_address)
                 ).estimate_gas({
                     'from': Web3.to_checksum_address(sender_address)
                 })
-                
+
                 tx = self.faucet.functions.giveTo(
                     Web3.to_checksum_address(give_to_address)
                 ).build_transaction(
@@ -259,7 +259,7 @@ class CryptoUtils:
                         'chainId': self.w3.eth.chain_id,
                     }
                 )
-                
+
                 receipt = self.complete_transaction(private_key, tx)
                 if receipt:
                     return receipt
@@ -268,7 +268,7 @@ class CryptoUtils:
                         f"faucet_give_to: {give_to_address}, nonce {nonce} failed."
                     )
                     raise Exception("Transaction failed")
-                    
+
             except Exception as e:
                 logger.error(f"faucet_give_to attempt {attempt+1} failed: {e}")
                 # Check for nonce error
@@ -282,14 +282,14 @@ class CryptoUtils:
                     attempt += 1
                     continue
                 raise
-                
+
         raise Exception("faucet_give_to failed after retries")
 
     def faucet_gimme(self, private_key: str, address: str) -> dict:
         """Call the gimme function for an account from the faucet"""
         if not self.faucet:
             raise Exception("Faucet contract not loaded")
-            
+
         raw_balance = self.w3.eth.get_balance(Web3.to_checksum_address(address))
         balance = convert_wei_to_celo(raw_balance)
 
@@ -326,7 +326,7 @@ class CryptoUtils:
         gas_estimate = self.faucet.functions.gimme().estimate_gas({
             'from': Web3.to_checksum_address(address),
         })
-        
+
         tx = self.faucet.functions.gimme().build_transaction({
             'from': Web3.to_checksum_address(address),
             'nonce': nonce,
@@ -359,7 +359,7 @@ class CryptoUtils:
                 }
         except Exception as e:
             print(f'Error processing events: {e}')
-            
+
         return {
             'balance': balance,
             'threshold': faucet_thresh,
@@ -373,7 +373,7 @@ class CryptoUtils:
         """Check if an address can receive funds at this time"""
         if not self.faucet:
             raise Exception("Faucet contract not loaded")
-            
+
         next_time = self.faucet.functions.nextTime(
             _subject=address_to_check
         ).call({'from': address_to_check})
@@ -391,7 +391,7 @@ class CryptoUtils:
         """Check what the threshold amount is for a faucet"""
         if not self.faucet:
             raise Exception("Faucet contract not loaded")
-            
+
         try:
             balance_threshold = self.faucet.functions.nextBalance(
                 _subject=Web3.to_checksum_address(address)
@@ -413,11 +413,11 @@ class CryptoUtils:
         """
         if self.registry is None:
             raise Exception("Registry contract not loaded.")
-            
+
         account = self.w3.eth.account.from_key(private_key)
         sender_address = account.address
         attempt = 0
-        
+
         while attempt < max_retries:
             try:
                 if nonce is None:
@@ -426,18 +426,18 @@ class CryptoUtils:
                     )
                 else:
                     nonce_to_use = nonce
-                    
+
                 gas_price = self.w3.eth.gas_price
                 gas_estimate = self.registry.functions.add(
                     Web3.to_checksum_address(address_to_add)
                 ).estimate_gas({
                     'from': Web3.to_checksum_address(sender_address)
                 })
-                
+
                 logger.info(
                     f"registry_add: {address_to_add}, gas {gas_estimate}"
                 )
-                
+
                 tx = self.registry.functions.add(
                     Web3.to_checksum_address(address_to_add)
                 ).build_transaction(
@@ -449,13 +449,13 @@ class CryptoUtils:
                         'chainId': self.w3.eth.chain_id,
                     }
                 )
-                
+
                 receipt = self.complete_transaction(private_key, tx)
                 if receipt:
                     return receipt
                 else:
                     raise Exception("Transaction failed")
-                    
+
             except Exception as e:
                 logger.error(f"registry_add attempt {attempt+1} failed: {e}")
                 # Check for nonce error
@@ -469,14 +469,14 @@ class CryptoUtils:
                     attempt += 1
                     continue
                 raise
-                
+
         raise Exception("registry_add failed after retries")
 
     def account_index_check_active(self, address_to_check: str) -> bool:
         """Check if an address is active on the account index."""
         if self.registry is None:
             raise Exception("Registry contract not loaded.")
-            
+
         active = self.registry.functions.isActive(
             Web3.to_checksum_address(address_to_check)
         ).call()

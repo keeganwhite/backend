@@ -11,6 +11,7 @@ from psycopg2 import OperationalError as Psycopg2Error
 
 class Command(BaseCommand):
     """Django command to pause execution until database is available."""
+
     def handle(self, *args, **options):
         """Entry point for Django management command."""
         self.stdout.write('Waiting for database...')
