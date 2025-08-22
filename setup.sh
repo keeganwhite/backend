@@ -341,6 +341,17 @@ fi
 print_header "Populating Database"
 print_color $BLUE "Running management commands to populate the database..."
 
+# Create superuser
+print_color $BLUE "Creating superuser..."
+if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser 2>/dev/null || \
+   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser 2>/dev/null; then
+    print_color $GREEN "✓ Superuser created successfully"
+else
+    print_color $YELLOW "Warning: Failed to create superuser (might already exist or need manual creation)"
+    print_color $BLUE "You can create a superuser manually with:"
+    print_color $YELLOW "  docker compose -f docker-compose-prod.yml exec app python manage.py create_superuser"
+fi
+
 # Create users from JSON
 print_color $BLUE "Creating users from users.json..."
 if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_users_from_json users.json 2>/dev/null || \
@@ -368,16 +379,7 @@ else
     print_color $YELLOW "Warning: Failed to create RADIUSdesk instances (they might already exist)"
 fi
 
-# Create superuser
-print_color $BLUE "Creating superuser..."
-if docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser 2>/dev/null || \
-   docker compose -f docker-compose-prod.yml exec -T app python manage.py create_superuser 2>/dev/null; then
-    print_color $GREEN "✓ Superuser created successfully"
-else
-    print_color $YELLOW "Warning: Failed to create superuser (might already exist or need manual creation)"
-    print_color $BLUE "You can create a superuser manually with:"
-    print_color $YELLOW "  docker compose -f docker-compose-prod.yml exec app python manage.py create_superuser"
-fi
+
 
 # Final status check
 print_header "Deployment Status"
