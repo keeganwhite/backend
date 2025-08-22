@@ -1,6 +1,6 @@
 services:
   app:
-    container_name: inethi-backend
+    container_name: inethi-backend-v1
     restart: unless-stopped
     env_file:
       - ./.env
@@ -25,29 +25,30 @@ services:
       - db
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backend.rule=Host(`backend.inethicloud.net`)"
-      - "traefik.http.routers.backend.entrypoints=websecure"
+      - "traefik.http.routers.backend.rule=Host(`${TRAEFIK_BACKEND_HOST:-backend.inethicloud.net}`)"
+      - "traefik.http.routers.backend.entrypoints=${TRAEFIK_ENTRYPOINTS:-websecure}"
       - "traefik.http.services.backend.loadbalancer.server.port=8000"
+      - "traefik.http.routers.backend.tls.certresolver=${TRAEFIK_CERTRESOLVER:-letsencrypt}"
 
   db:
     image: timescale/timescaledb:latest-pg17
     restart: unless-stopped
-    container_name: inethi-backend-db-timescale
+    container_name: inethi-backend-db-timescale-v1
     env_file:
       - ./.env
     volumes:
-      - prod-db-data-timescale:/var/lib/postgresql/data
+      - prod-db-data-timescale-v1:/var/lib/postgresql/data
     environment:
       - POSTGRES_DB=${DB_NAME:-devdb}
       - POSTGRES_USER=${DB_USER:-devuser}
       - POSTGRES_PASSWORD=${DB_PASS:-devpass}
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.backenddb.entrypoints=websecure"
+      - "traefik.http.routers.backenddbv1.entrypoints=${TRAEFIK_ENTRYPOINTS:-websecure}"
 
   redis:
     image: redis:alpine
-    container_name: inethi-backend-celery-redis
+    container_name: inethi-backend-celery-redis-v1
 
   celery:
     build:
@@ -61,7 +62,7 @@ services:
     environment:
       - CELERY_BROKER=redis://redis:6379/0
       - CELERY_BACKEND=redis://redis:6379/0
-    container_name: inethi-backend-celery
+    container_name: inethi-backend-celery-v1
     depends_on:
       - redis
       - db
@@ -76,16 +77,15 @@ services:
     environment:
       - CELERY_BROKER=redis://redis:6379/0
       - CELERY_BACKEND=redis://redis:6379/0
-    container_name: inethi-backend-celery-beat
+    container_name: inethi-backend-celery-beat-v1
     depends_on:
       - redis
       - db
 
-
 networks:
   default:
     external:
-      name: "inethi-bridge-traefik"
+      name: "${TRAEFIK_NETWORK_BRIDGE:-inethi-bridge-traefik}"
 
 volumes:
-  prod-db-data-timescale:
+  prod-db-data-timescale-v1:

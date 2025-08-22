@@ -65,35 +65,30 @@ class WalletSerializer(serializers.ModelSerializer):
                     address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
                 )
                 p_key_admin = decrypt_private_key(account_index_creator.private_key)
-                sender_address_admin = account_index_creator.address
-                # Fetch the starting nonce
-                nonce = crypto_utils.w3.eth.get_transaction_count(sender_address_admin)
-                # registry_add with nonce
-                crypto_utils.registry_add(
-                    private_key=p_key_admin,
-                    address_to_add=w_addr,
-                    nonce=nonce
+                
+                # Create new CryptoUtils instance for registry operations
+                registry_crypto = CryptoUtils(
+                    contract_abi_path=settings.ABI_FILE_PATH,
+                    contract_address=settings.CONTRACT_ADDRESS,
+                    registry=settings.FAUCET_AND_INDEX_ENABLED,
+                    faucet=settings.FAUCET_AND_INDEX_ENABLED,
                 )
-                nonce += 1  # increment for next tx
+                registry_crypto.registry_add(p_key_admin, w_addr)
+                
                 # send the account gas
                 faucet_creator = Wallet.objects.get(  # type: ignore[attr-defined]
                     address=settings.FAUCET_ADMIN_WALLET_ADDRESS
                 )
                 p_key_faucet = decrypt_private_key(faucet_creator.private_key)
-                sender_address_faucet = faucet_creator.address
-                if sender_address_faucet == sender_address_admin:
-                    # use incremented nonce
-                    faucet_nonce = nonce
-                else:
-                    faucet_nonce = crypto_utils.w3.eth.get_transaction_count(
-                        sender_address_faucet
-                    )
-                    nonce = nonce + 1
-                crypto_utils.faucet_give_to(
-                    private_key=p_key_faucet,
-                    give_to_address=w_addr,
-                    nonce=faucet_nonce
+                
+                # Create new CryptoUtils instance for faucet operations
+                faucet_crypto = CryptoUtils(
+                    contract_abi_path=settings.ABI_FILE_PATH,
+                    contract_address=settings.CONTRACT_ADDRESS,
+                    registry=settings.FAUCET_AND_INDEX_ENABLED,
+                    faucet=settings.FAUCET_AND_INDEX_ENABLED,
                 )
+                faucet_crypto.faucet_give_to(p_key_faucet, w_addr)
             except Exception as e:
                 logger.error(
                     f"Error during wallet creation (registry/faucet): {e}"

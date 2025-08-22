@@ -1,6 +1,7 @@
 from django.db import models
 from django.core.validators import RegexValidator
 from django.conf import settings
+from timescale.db.models.models import TimescaleModel
 from radiusdesk.models import (
     Cloud,
     RadiusDeskInstance,
@@ -16,11 +17,16 @@ mac_address_validator = RegexValidator(
 
 class Network(models.Model):
     name = models.CharField(max_length=255)
-    admin = models.ForeignKey(
+    created_by = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
-        related_name="networks",
-        help_text="User who administrates this network"
+        related_name="created_networks",
+        help_text="User who created this network"
+    )
+    admins = models.ManyToManyField(
+        settings.AUTH_USER_MODEL,
+        related_name="administered_networks",
+        help_text="Users who can administrate this network"
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -28,7 +34,7 @@ class Network(models.Model):
         return self.name
 
     class Meta:
-        unique_together = (("name", "admin"),)
+        unique_together = (("name", "created_by"),)
 
 
 class Host(models.Model):
@@ -108,7 +114,7 @@ class Host(models.Model):
         )
 
 
-class Ping(models.Model):
+class Ping(TimescaleModel):
     host = models.ForeignKey(
         Host,
         on_delete=models.CASCADE,
@@ -128,3 +134,11 @@ class Ping(models.Model):
     def __str__(self):
         status = "Alive" if self.is_alive else "Down"
         return f"{self.host} at {self.timestamp}: {status}"
+
+    class Meta:
+        # TimescaleDB requires the time column to be part of the primary key
+        unique_together = (('timestamp', 'id'),)
+
+    class TimescaleMeta:
+        # Tell TimescaleDB to use 'timestamp' as the time column instead of 'time'
+        time_column = 'timestamp'

@@ -1,0 +1,12 @@
+[
+  {
+    "username": "network_admin_1",
+    "password": "password1",
+    "email": "network_admin_1@inethi.com"
+  },
+  {
+    "username": "network_admin_2",
+    "password": "password2",
+    "email": "network_admin_2@inethi.com"
+  }
+]

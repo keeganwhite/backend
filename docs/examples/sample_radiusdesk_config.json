@@ -1,0 +1,148 @@
+[
+  {
+    "name": "Main RADIUSdesk Instance",
+    "base_url": "https://radiusdesk.example.com",
+    "username": "admin",
+    "password": "admin_password",
+    "accepts_crypto": true,
+    "administrators": ["devuser", "network_admin"],
+    "clouds": [
+      {
+        "name": "Main Cloud",
+        "radius_desk_id": 1,
+        "realms": [
+          {
+            "name": "Default Realm",
+            "radius_desk_id": 1,
+            "profiles": [
+              {
+                "name": "Basic Plan",
+                "radius_desk_id": 1,
+                "data_limit_enabled": true,
+                "data_limit_gb": 5.0,
+                "data_limit_reset": "monthly",
+                "speed_limit_enabled": true,
+                "speed_limit_mbs": 10.0,
+                "limit_session_enabled": false,
+                "session_limit": 0,
+                "cost": 0.0
+              },
+              {
+                "name": "Premium Plan",
+                "radius_desk_id": 2,
+                "data_limit_enabled": true,
+                "data_limit_gb": 20.0,
+                "data_limit_reset": "monthly",
+                "speed_limit_enabled": true,
+                "speed_limit_mbs": 50.0,
+                "limit_session_enabled": false,
+                "session_limit": 0,
+                "cost": 10.0
+              },
+              {
+                "name": "Unlimited Plan",
+                "radius_desk_id": 3,
+                "data_limit_enabled": false,
+                "data_limit_gb": 0,
+                "data_limit_reset": "never",
+                "speed_limit_enabled": true,
+                "speed_limit_mbs": 100.0,
+                "limit_session_enabled": true,
+                "session_limit": 1,
+                "cost": 25.0
+              }
+            ]
+          },
+          {
+            "name": "Guest Realm",
+            "radius_desk_id": 2,
+            "profiles": [
+              {
+                "name": "Guest Access",
+                "radius_desk_id": 4,
+                "data_limit_enabled": true,
+                "data_limit_gb": 1.0,
+                "data_limit_reset": "daily",
+                "speed_limit_enabled": true,
+                "speed_limit_mbs": 5.0,
+                "limit_session_enabled": true,
+                "session_limit": 2,
+                "cost": 0.0
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Secondary Cloud",
+        "radius_desk_id": 2,
+        "realms": [
+          {
+            "name": "Business Realm",
+            "radius_desk_id": 3,
+            "profiles": [
+              {
+                "name": "Business Basic",
+                "radius_desk_id": 5,
+                "data_limit_enabled": true,
+                "data_limit_gb": 50.0,
+                "data_limit_reset": "monthly",
+                "speed_limit_enabled": true,
+                "speed_limit_mbs": 25.0,
+                "limit_session_enabled": false,
+                "session_limit": 0,
+                "cost": 15.0
+              },
+              {
+                "name": "Business Pro",
+                "radius_desk_id": 6,
+                "data_limit_enabled": true,
+                "data_limit_gb": 100.0,
+                "data_limit_reset": "monthly",
+                "speed_limit_enabled": true,
+                "speed_limit_mbs": 100.0,
+                "limit_session_enabled": true,
+                "session_limit": 5,
+                "cost": 35.0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "Test RADIUSdesk Instance",
+    "base_url": "https://test-radiusdesk.example.com",
+    "username": "test_admin",
+    "password": "test_password",
+    "accepts_crypto": false,
+    "administrators": ["devuser"],
+    "clouds": [
+      {
+        "name": "Test Cloud",
+        "radius_desk_id": 1,
+        "realms": [
+          {
+            "name": "Test Realm",
+            "radius_desk_id": 1,
+            "profiles": [
+              {
+                "name": "Test Profile",
+                "radius_desk_id": 1,
+                "data_limit_enabled": false,
+                "data_limit_gb": 0,
+                "data_limit_reset": "never",
+                "speed_limit_enabled": false,
+                "speed_limit_mbs": 0,
+                "limit_session_enabled": false,
+                "session_limit": 0,
+                "cost": 0.0
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+]

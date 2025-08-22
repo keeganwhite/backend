@@ -4,6 +4,10 @@ The backend for the bespoke iNethi system.
 
 ## Commands
 
+### Prerequisites
+
+Read the [docs](./docs/README.md) for details of the set up and requirements.
+
 ### Running the Code
 
 Look at [.env.example](.env.example) and create a `.env` file with all the variables listed in this file. See
@@ -55,12 +59,3 @@ print(f"Your encryption key: {encryption_key.decode()}")
 from django.core.management.utils import get_random_secret_key
 print(get_random_secret_key())
 ```
-
-## Contributing
-
-Pull requests and issues are welcome! Please open an issue to discuss major changes or new features.
-
-## License
-
-> [!WARNING]
-> Closed-source commercial usage of this code is not permitted with the GPL-3.0. If that license is not compatible with your use case, please contact keeganthomaswhite@gmail.com for queries.

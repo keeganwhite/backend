@@ -50,7 +50,7 @@ def update_host_by_identifier(request):
 
     # Look up the network by name and ensure the requesting user is its admin.
     try:
-        network = Network.objects.get(name=network_name, admin=request.user)
+        network = Network.objects.get(name=network_name, admins=request.user)
         print(network.id)
     except Network.DoesNotExist:
         return Response(
@@ -119,7 +119,7 @@ def delete_host_by_identifier(request):
 
     # Look up the network by name for the current user.
     try:
-        network = Network.objects.get(name=network_name, admin=request.user)
+        network = Network.objects.get(name=network_name, admins=request.user)
     except Network.DoesNotExist:
         return Response(
             {"error": "Network not found or not authorized."},
@@ -165,15 +165,18 @@ def aggregate_ping_view(request):
       - host_ids (optional): Comma-separated list of host IDs (integers).
       - aggregation (optional): One of "15m", "60m", "6h", "12h", "24h",
           "7d", "30d", "90d", "365d". Defaults to "15m".
+      - time_range (optional): Time range filter (e.g., "24 hours", "7 days").
+          Defaults to "24 hours".
 
     Example URLs:
       /api/ping-aggregates/?aggregation=15m
-      /api/ping-aggregates/?host_ids=1,2,3&aggregation=60m
+      /api/ping-aggregates/?host_ids=1,2,3&aggregation=60m&time_range=7 days
     """
     # Get query parameters from DRF's request.query_params.
     host_ids_param = request.query_params.get('host_ids')
     aggregation_param = request.query_params.get('aggregation', '15m')
     network_id = request.query_params.get('network_id')
+    time_range = request.query_params.get('time_range', '24 hours')
 
     # Map allowed aggregation values to your materialized view names.
     valid_aggregations = {
@@ -199,7 +202,7 @@ def aggregate_ping_view(request):
     # If network_id is provided, override host_ids.
     if network_id:
         try:
-            network = Network.objects.get(id=network_id, admin=request.user)
+            network = Network.objects.get(id=network_id, admins=request.user)
         except Network.DoesNotExist:
             return Response(
                 {"error": "Network not found or not authorized."},
@@ -219,27 +222,26 @@ def aggregate_ping_view(request):
                     status=status.HTTP_400_BAD_REQUEST
                 )
 
-    # Build the SQL query.
+    # Build the optimized SQL query with time range filtering
+    base_query = f"""
+        SELECT bucket, host_id, uptime_percentage, total_pings
+        FROM {table_name}
+        WHERE bucket >= now() - interval %s
+    """
+    params = [time_range]
+
     if host_ids:
         # Create a list of placeholders for each host id.
         placeholders = ','.join(['%s'] * len(host_ids))
-        query = (
-            f"SELECT bucket, host_id, uptime_percentage, total_pings "
-            f"FROM {table_name} WHERE host_id IN ({placeholders}) "
-            f"ORDER BY bucket;"
-        )
-        params = host_ids
-    else:
-        query = (
-            f"SELECT bucket, host_id, uptime_percentage, total_pings "
-            f"FROM {table_name} ORDER BY bucket;"
-        )
-        params = []
+        base_query += f" AND host_id IN ({placeholders})"
+        params.extend(host_ids)
+
+    base_query += " ORDER BY bucket DESC, host_id;"
 
     # Execute the query using Django's database connection.
     try:
         with connection.cursor() as cursor:
-            cursor.execute(query, params)
+            cursor.execute(base_query, params)
             columns = [col[0] for col in cursor.description]
             results = [dict(zip(columns, row)) for row in cursor.fetchall()]
     except Exception as e:
@@ -276,7 +278,7 @@ def aggregate_uptime_view(request):
     host_ids = []
     if network_id:
         try:
-            network = Network.objects.get(id=network_id, admin=request.user)
+            network = Network.objects.get(id=network_id, admins=request.user)
         except Network.DoesNotExist:
             return Response(
                 {"error": "Network not found or not authorized."},
@@ -292,7 +294,7 @@ def aggregate_uptime_view(request):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-    # Build the SQL query to aggregate data per host over the entire period.
+    # Build the optimized SQL query using TimescaleDB time_bucket for better performance
     sql = """
         SELECT
           host_id,
@@ -419,7 +421,7 @@ def device_uptime_line_view(request):
 
     if network_id:
         try:
-            network = Network.objects.get(id=network_id, admin=request.user)
+            network = Network.objects.get(id=network_id, admins=request.user)
         except Network.DoesNotExist:
             return Response(
                 {"error": "Network not found or not authorized."},
@@ -557,7 +559,7 @@ class HostViewSet(viewsets.ModelViewSet):
             qs = Host.objects.all()
         else:
             # For network admins, only show hosts in networks they manage.
-            qs = Host.objects.filter(network__admin=user)
+            qs = Host.objects.filter(network__admins=user)
         # Optionally filter by a network id passed as query parameter.
         network_id = self.request.query_params.get("network_id")
         if network_id:
@@ -569,7 +571,7 @@ class HostViewSet(viewsets.ModelViewSet):
         # If a network admin is creating a host, ensure network is one they manage.
         if user.has_perm('core.network_admin') and not user.is_superuser:
             network = serializer.validated_data.get('network')
-            if not network or network.admin != user:
+            if not network or user not in network.admins.all():
                 raise PermissionDenied("Unauthorized to add hosts to this network.")
         serializer.save()
 
@@ -599,10 +601,13 @@ class NetworkViewSet(viewsets.ModelViewSet):
         user = self.request.user
         if user.is_superuser or not user.has_perm('core.network_admin'):
             return Network.objects.all()
-        return Network.objects.filter(admin=user)
+        return Network.objects.filter(admins=user)
 
     def perform_create(self, serializer):
-        serializer.save(admin=self.request.user)
+        serializer.save(created_by=self.request.user)
+        # Add the creator as the first admin
+        network = serializer.instance
+        network.admins.add(self.request.user)
 
     @action(detail=True, methods=["get"])
     def hosts(self, request, pk=None):
@@ -657,7 +662,7 @@ def ingest_uptime_data(request):
 
     # network admin (and not a superuser), ensure they manage this network.
     if request.user.has_perm('core.network_admin') and not request.user.is_superuser:
-        if network.admin != request.user:
+        if request.user not in network.admins.all():
             return Response(
                 {"error": "You are not authorized to ingest data for this network."},
                 status=status.HTTP_403_FORBIDDEN

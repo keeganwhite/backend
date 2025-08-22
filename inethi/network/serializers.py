@@ -35,4 +35,4 @@ class NetworkSerializer(serializers.ModelSerializer):
     class Meta:
         model = Network
         fields = '__all__'
-        read_only_fields = ['admin']
+        read_only_fields = ['created_by']

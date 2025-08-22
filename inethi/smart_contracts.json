@@ -1,0 +1,20 @@
+[
+  {
+    "name": "iNethi Registry",
+    "address": "0x9b1a3F8FadD0dc86FBae5Cf66Fa682fDcd84a9b0",
+    "contract_type": "account index",
+    "description": "iNethi account registry for celo eth faucet",
+    "write_access": false,
+    "read_access": false,
+    "user_name": "inethiofficial"
+  },
+  {
+    "name": "iNethi Faucet",
+    "address": "0xB821E49ADB53F0AbeD834278d5dFc57901c30Eea",
+    "contract_type": "eth faucet",
+    "description": "iNethi faucet for celo",
+    "write_access": false,
+    "read_access": false,
+    "user_name": "inethiofficial"
+  }
+]

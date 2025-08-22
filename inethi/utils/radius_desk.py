@@ -131,6 +131,41 @@ def fetch_voucher_details(token, voucher_code, cloud_id, base_url, limit=150):
         raise Exception(f"Failed to fetch voucher details: {response.text}")
 
 
+def fetch_voucher_stats(token, voucher_code, cloud_id, base_url, limit=150):
+    """
+    Fetch detailed statistics for a specific voucher from the RADIUSdesk API.
+    This uses the radaccts endpoint to get comprehensive usage data.
+    """
+    url = f"{base_url}/radaccts/index.json"
+
+    # Generate a current timestamp string for the _dc parameter
+    timestamp = str(int(time.time() * 1000))
+
+    params = {
+        "_dc": timestamp,
+        "username": voucher_code,  # voucher_code is passed as the username
+        "page": 1,
+        "start": 0,
+        "limit": limit,
+        "token": token,
+        "sel_language": "4_4",
+        "cloud_id": cloud_id,
+    }
+    cookies = {"Token": token}
+
+    response = requests.get(
+        url,
+        headers=HEADERS_URL_ENCODED,
+        params=params,
+        cookies=cookies
+    )
+
+    if response.status_code == 200:
+        return response.json()
+    else:
+        raise Exception(f"Failed to fetch voucher stats: {response.text}")
+
+
 def create_voucher(
         token,
         base_url,

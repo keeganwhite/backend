@@ -29,5 +29,6 @@ class PingAdmin(admin.ModelAdmin):
 
 @admin.register(Network)
 class NetworkAdmin(admin.ModelAdmin):
-    list_display = ('name', 'admin', 'created_at')
-    search_fields = ('name', 'admin__username')
+    list_display = ('name', 'created_by', 'created_at')
+    search_fields = ('name', 'created_by__username')
+    filter_horizontal = ('admins',)

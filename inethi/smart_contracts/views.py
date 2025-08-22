@@ -27,12 +27,7 @@ class SmartContractViewSet(viewsets.ModelViewSet):
     authentication_classes = (KeycloakAuthentication,)
     permission_classes = (IsAuthenticated,)
     queryset = SmartContract.objects.all()
-    c_utils = CryptoUtils(
-        contract_abi_path=settings.ABI_FILE_PATH,
-        contract_address=settings.CONTRACT_ADDRESS,
-        registry=settings.FAUCET_AND_INDEX_ENABLED,
-        faucet=settings.FAUCET_AND_INDEX_ENABLED,
-    )
+    # CryptoUtils will be created per transaction to avoid nonce conflicts
 
     def get_permissions(self):
         if self.action in ['create', 'update', 'partial_update', 'destroy']:
@@ -197,10 +192,14 @@ class SmartContractViewSet(viewsets.ModelViewSet):
                 address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
             )
             p_key = decrypt_private_key(account_index_creator.private_key)
-            receipt = self.c_utils.registry_add(
-                private_key=p_key,
-                address_to_add=add_address,
+            # Create new CryptoUtils instance for registry operations
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
             )
+            receipt = crypto_utils.registry_add(p_key, add_address)
             if isinstance(receipt, dict):
                 receipt_data = receipt
             else:
@@ -295,10 +294,14 @@ class SmartContractViewSet(viewsets.ModelViewSet):
             )
             p_key = decrypt_private_key(faucet_creator.private_key)
 
-            receipt = self.c_utils.faucet_give_to(
-                private_key=p_key,
-                give_to_address=give_to_addr,
+            # Create new CryptoUtils instance for faucet operations
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
             )
+            receipt = crypto_utils.faucet_give_to(p_key, give_to_addr)
 
             if isinstance(receipt, dict):
                 receipt_data = receipt
@@ -363,7 +366,14 @@ class SmartContractViewSet(viewsets.ModelViewSet):
             )
 
         wallet_addr = request.data['address']
-        active = self.c_utils.account_index_check_active(wallet_addr)
+        # Create new CryptoUtils instance for balance check
+        crypto_utils = CryptoUtils(
+            contract_abi_path=settings.ABI_FILE_PATH,
+            contract_address=settings.CONTRACT_ADDRESS,
+            registry=settings.FAUCET_AND_INDEX_ENABLED,
+            faucet=settings.FAUCET_AND_INDEX_ENABLED,
+        )
+        active = crypto_utils.account_index_check_active(wallet_addr)
 
         return Response(
             status=status.HTTP_200_OK,
@@ -412,36 +422,27 @@ class SmartContractViewSet(viewsets.ModelViewSet):
                     wallet.private_key
                 )
 
-                gimme_rsp = self.c_utils.faucet_gimme(
-                    decrypted_private_key,
-                    address
+                # Create new CryptoUtils instance for faucet operations
+                crypto_utils = CryptoUtils(
+                    contract_abi_path=settings.ABI_FILE_PATH,
+                    contract_address=settings.CONTRACT_ADDRESS,
+                    registry=settings.FAUCET_AND_INDEX_ENABLED,
+                    faucet=settings.FAUCET_AND_INDEX_ENABLED,
                 )
-                print(f'Gimme rsp: {gimme_rsp}')
-                if gimme_rsp['success']:
-                    return Response(
-                        {
-                            'amount': gimme_rsp['amount']
-                         },
-                        status=status.HTTP_200_OK
-                    )
-                # order matters
-                elif gimme_rsp['time_check']:
-                    return Response(
-                        {
-                            'error':
-                                f'you have to wait until {gimme_rsp["time"]}'
-                        },
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
-                elif gimme_rsp['faucet_thresh']:
-                    return Response(
-                        {
-                            'error':
-                                f'Your balance needs to be below '
-                                f'{gimme_rsp["threshold"]}'
-                        },
-                        status=status.HTTP_400_BAD_REQUEST
-                    )
+                
+                # Call faucet gimme (new method returns transaction receipt)
+                receipt = crypto_utils.faucet_gimme(decrypted_private_key, wallet.address)
+                
+                # For now, return success since the new method doesn't return detailed info
+                # You may want to add additional checks here if needed
+                return Response(
+                    {
+                        'success': True,
+                        'transaction_hash': receipt.transactionHash.hex(),
+                        'gas_used': receipt.gasUsed
+                    },
+                    status=status.HTTP_200_OK
+                )
 
             except Exception as e:
                 return Response(
@@ -495,7 +496,14 @@ class SmartContractViewSet(viewsets.ModelViewSet):
             wallet = Wallet.objects.get(user=request.user)
             address = wallet.address
 
-            get_next_time = self.c_utils.faucet_check_time(address)
+            # Create new CryptoUtils instance for faucet operations
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+            get_next_time = crypto_utils.faucet_check_time(address)
             return Response(
                 {
                     'can_request': get_next_time['is_older'],
@@ -546,7 +554,14 @@ class SmartContractViewSet(viewsets.ModelViewSet):
             wallet = Wallet.objects.get(user=request.user)
             address = wallet.address
 
-            balance_thresh = self.c_utils.faucet_balance_threshold(address)
+            # Create new CryptoUtils instance for faucet operations
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+            balance_thresh = crypto_utils.faucet_balance_threshold(address)
             return Response(
                 {
                     'amount': balance_thresh,

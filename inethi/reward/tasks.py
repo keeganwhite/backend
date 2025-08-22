@@ -93,10 +93,10 @@ def process_reward(reward_id):
             # Send tokens
             try:
                 tx_receipt = crypto_utils.send_to_wallet_address(
-                    from_address=admin_wallet.address,
-                    private_key=admin_private_key,
-                    to_address=device_wallet.address,
-                    amount=awarded_amount
+                    admin_wallet.address, 
+                    admin_private_key, 
+                    device_wallet.address, 
+                    awarded_amount
                 )
                 tx_hash = None
                 if (

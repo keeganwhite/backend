@@ -23,12 +23,7 @@ class WalletViewSet(viewsets.ModelViewSet):
     serializer_class = WalletSerializer
     authentication_classes = (KeycloakAuthentication,)
     permission_classes = (permissions.IsAuthenticated,)
-    crypto_utils = CryptoUtils(
-        contract_abi_path=settings.ABI_FILE_PATH,
-        contract_address=settings.CONTRACT_ADDRESS,
-        registry=settings.FAUCET_AND_INDEX_ENABLED,
-        faucet=settings.FAUCET_AND_INDEX_ENABLED,
-    )
+    # CryptoUtils will be created per transaction to avoid nonce conflicts
 
     def get_queryset(self):
         """
@@ -122,14 +117,28 @@ class WalletViewSet(viewsets.ModelViewSet):
                     address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
                 )
                 p_key = decrypt_private_key(faucet_creator.private_key)
-                self.crypto_utils.pre_transaction_check(
+                # Create new CryptoUtils instance for pre-transaction check
+                check_crypto = CryptoUtils(
+                    contract_abi_path=settings.ABI_FILE_PATH,
+                    contract_address=settings.CONTRACT_ADDRESS,
+                    registry=settings.FAUCET_AND_INDEX_ENABLED,
+                    faucet=settings.FAUCET_AND_INDEX_ENABLED,
+                )
+                check_crypto.pre_transaction_check(
                     private_key_admin=p_key,
                     from_address=wallet.address,
                     to_address=recipient_address,
                     amount=float(amount)
                 )
+            # Create new CryptoUtils instance for this transaction
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
             # Send tokens using CryptoUtils
-            tx_receipt = self.crypto_utils.send_to_wallet_address(
+            tx_receipt = crypto_utils.send_to_wallet_address(
                 wallet.address,
                 decrypted_private_key,
                 recipient_address,
@@ -220,14 +229,29 @@ class WalletViewSet(viewsets.ModelViewSet):
                     address=settings.ACCOUNT_INDEX_ADMIN_WALLET_ADDRESS
                 )
                 p_key = decrypt_private_key(faucet_creator.private_key)
-                self.crypto_utils.pre_transaction_check(
+                # Create new CryptoUtils instance for pre-transaction check
+                check_crypto = CryptoUtils(
+                    contract_abi_path=settings.ABI_FILE_PATH,
+                    contract_address=settings.CONTRACT_ADDRESS,
+                    registry=settings.FAUCET_AND_INDEX_ENABLED,
+                    faucet=settings.FAUCET_AND_INDEX_ENABLED,
+                )
+                check_crypto.pre_transaction_check(
                     private_key_admin=p_key,
                     from_address=wallet.address,
                     to_address=recipient_address,
                     amount=float(amount)
                 )
+            # Create new CryptoUtils instance for this transaction
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+
             # Send tokens using CryptoUtils
-            tx_receipt = self.crypto_utils.send_to_wallet_address(
+            tx_receipt = crypto_utils.send_to_wallet_address(
                 wallet.address,
                 decrypted_private_key,
                 recipient_address,
@@ -295,8 +319,16 @@ class WalletViewSet(viewsets.ModelViewSet):
             decrypted_private_key = utils.crypto.decrypt_private_key(
                 wallet.private_key
             )
+            # Create new CryptoUtils instance for this transaction
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+
             # Send tokens using CryptoUtils
-            tx_receipt = self.crypto_utils.send_to_wallet_address(
+            tx_receipt = crypto_utils.send_to_wallet_address(
                 wallet.address,
                 decrypted_private_key,
                 recipient_address,
@@ -369,8 +401,16 @@ class WalletViewSet(viewsets.ModelViewSet):
             decrypted_private_key = utils.crypto.decrypt_private_key(
                 wallet.private_key
             )
+            # Create new CryptoUtils instance for this transaction
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+
             # Send tokens using CryptoUtils
-            tx_receipt = self.crypto_utils.send_to_wallet_address(
+            tx_receipt = crypto_utils.send_to_wallet_address(
                 wallet.address,
                 decrypted_private_key,
                 recipient_address,
@@ -403,7 +443,14 @@ class WalletViewSet(viewsets.ModelViewSet):
         if wallet:
             token_name = wallet.token_common_name
             if token_name == 'KRONE':
-                balance = self.crypto_utils.balance_of(wallet.address)
+                # Create new CryptoUtils instance for balance check
+                crypto_utils = CryptoUtils(
+                    contract_abi_path=settings.ABI_FILE_PATH,
+                    contract_address=settings.CONTRACT_ADDRESS,
+                    registry=settings.FAUCET_AND_INDEX_ENABLED,
+                    faucet=settings.FAUCET_AND_INDEX_ENABLED,
+                )
+                balance = crypto_utils.balance_of(wallet.address)
                 return Response(
                     {'balance': balance},
                     status=status.HTTP_200_OK
@@ -531,7 +578,15 @@ class WalletViewSet(viewsets.ModelViewSet):
 
         # Perform the crypto transaction for the voucher cost
         try:
-            tx_receipt = self.crypto_utils.send_to_wallet_address(
+            # Create new CryptoUtils instance for this transaction
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+
+            tx_receipt = crypto_utils.send_to_wallet_address(
                 wallet.address,
                 decrypted_private_key,
                 admin_wallet.address,
