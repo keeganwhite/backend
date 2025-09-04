@@ -11,7 +11,14 @@ from .models import (
 class RadiusDeskInstanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = RadiusDeskInstance
-        fields = '__all__'
+        fields = [
+            'id',
+            'name', 
+            'base_url',
+            'administrators',
+            'accepts_crypto'
+        ]
+        # Explicitly exclude sensitive fields: username, password, token
 
 
 class CloudSerializer(serializers.ModelSerializer):
@@ -44,46 +51,28 @@ class VoucherSerializer(serializers.ModelSerializer):
     profile_cost = serializers.SerializerMethodField()
 
     def get_profile_name(self, obj):
-        """Get the profile name for this voucher through its realm."""
-        profile = obj.realm.profiles.filter(
-            radius_desk_instance=obj.radius_desk_instance
-        ).first()
-        return profile.name if profile else None
+        """Get the profile name for this voucher."""
+        return obj.profile.name if obj.profile else None
 
     def get_profile_data_limit_gb(self, obj):
         """Get the profile data limit in GB."""
-        profile = obj.realm.profiles.filter(
-            radius_desk_instance=obj.radius_desk_instance
-        ).first()
-        return profile.data_limit_gb if profile else None
+        return obj.profile.data_limit_gb if obj.profile else None
 
     def get_profile_data_limit_enabled(self, obj):
         """Get whether data limit is enabled for the profile."""
-        profile = obj.realm.profiles.filter(
-            radius_desk_instance=obj.radius_desk_instance
-        ).first()
-        return profile.data_limit_enabled if profile else False
+        return obj.profile.data_limit_enabled if obj.profile else False
 
     def get_profile_speed_limit_mbs(self, obj):
         """Get the profile speed limit in MB/s."""
-        profile = obj.realm.profiles.filter(
-            radius_desk_instance=obj.radius_desk_instance
-        ).first()
-        return profile.speed_limit_mbs if profile else None
+        return obj.profile.speed_limit_mbs if obj.profile else None
 
     def get_profile_speed_limit_enabled(self, obj):
         """Get whether speed limit is enabled for the profile."""
-        profile = obj.realm.profiles.filter(
-            radius_desk_instance=obj.radius_desk_instance
-        ).first()
-        return profile.speed_limit_enabled if profile else False
+        return obj.profile.speed_limit_enabled if obj.profile else False
 
     def get_profile_cost(self, obj):
         """Get the profile cost."""
-        profile = obj.realm.profiles.filter(
-            radius_desk_instance=obj.radius_desk_instance
-        ).first()
-        return profile.cost if profile else None
+        return obj.profile.cost if obj.profile else None
 
     class Meta:
         model = Voucher
