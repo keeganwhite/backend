@@ -26,6 +26,7 @@ from utils.radius_desk import (
     login,
     create_voucher,
     fetch_vouchers,
+    fetch_voucher_details,
     fetch_voucher_stats
 )
 from utils.keycloak import KeycloakAuthentication
@@ -169,19 +170,34 @@ class VoucherViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def voucher_stats(self, request):
         """
-        Retrieve statistics for a single voucher using its voucher_code.
+        Retrieve summary statistics for a single voucher using its voucher_code.
+        Uses the radaccts endpoint to get session data and returns a manageable summary.
+        
         Requires:
          - voucher_code (string)
          - radius_desk_instance_pk (primary key)
          - radius_desk_cloud_pk (primary key)
+         
+        Returns:
+         - voucher_code: The voucher code
+         - status: "used" if voucher has been used, "unused" if not used yet
+         - message: Additional message (only for unused vouchers)
+         - most_recent_stop_time: Most recent session stop time (null if unused)
+         - total_data_used_gb: Total data used in GB (0 if unused)
+         - total_time_connected_hours: Total connection time in hours (0 if unused)
+         - total_sessions: Number of sessions (0 if unused)
+         - total_data_bytes: Total data used in bytes (raw, 0 if unused)
+         - total_time_seconds: Total connection time in seconds (raw, 0 if unused)
         """
         voucher_code = request.query_params.get("voucher_code")
         radius_desk_instance_pk = request.query_params.get("radius_desk_instance_pk")
         radius_desk_cloud_pk = request.query_params.get("radius_desk_cloud_pk")
-        print('checking voucher_code', voucher_code)
+        
+        logger.info(f"Fetching voucher stats for voucher_code: {voucher_code}")
+        
         if not voucher_code or not radius_desk_instance_pk or not radius_desk_cloud_pk:
             return Response(
-                {"error": "voucher_code, radius desk, radius desk cloud required."},
+                {"error": "voucher_code, radius_desk_instance_pk, and radius_desk_cloud_pk are required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
@@ -200,41 +216,103 @@ class VoucherViewSet(viewsets.ModelViewSet):
                 )
                 instance.save()
 
-            # Fetch all vouchers stats from the external service
-            voucher_stats_response = fetch_vouchers(
+            # Fetch specific voucher details using the radaccts endpoint
+            voucher_stats_response = fetch_voucher_details(
                 token=instance.token,
+                voucher_code=voucher_code,
                 cloud_id=cloud_obj.radius_desk_id,
                 base_url=instance.base_url,
-                limit=50000  # Adjust the limit as needed
+                limit=150
             )
 
-            # Filter for the voucher with the provided voucher_code.
-            # Adjust the key if your fetch_vouchers returns the voucher
-            # code under a different key.
-            voucher_data = next(
-                (v for v in voucher_stats_response.get("items", [])
-                    if v.get("name") == voucher_code),
-                None
-            )
-
-            if not voucher_data:
+            # Check if voucher was found
+            if not voucher_stats_response.get("success", False):
                 return Response(
-                    {"error": "Voucher not found."},
-                    status=status.HTTP_404_NOT_FOUND
+                    {"error": "Failed to fetch voucher data from RADIUSdesk."},
+                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
                 )
 
-            # Prepare the stats you want to send back
-            filtered_stats = {
-                "voucher_code": voucher_data.get("name"),
-                "perc_time_used": voucher_data.get("perc_time_used"),
-                "perc_data_used": voucher_data.get("perc_data_used"),
-                "last_accept_time": voucher_data.get("last_accept_time_in_words"),
-                # Include additional stats if available...
+            items = voucher_stats_response.get("items", [])
+            if not items:
+                # Voucher exists but hasn't been used yet
+                return Response(
+                    {
+                        "voucher_code": voucher_code,
+                        "status": "unused",
+                        "message": "Voucher has not been used yet.",
+                        "most_recent_stop_time": None,
+                        "total_data_used_gb": 0,
+                        "total_time_connected_hours": 0,
+                        "total_sessions": 0,
+                        "total_data_bytes": 0,
+                        "total_time_seconds": 0
+                    },
+                    status=status.HTTP_200_OK
+                )
+
+            # Process the data to get manageable summary
+            meta_data = voucher_stats_response.get("metaData", {})
+            
+            # Find the most recent stop time and check for active sessions
+            most_recent_stop_time = None
+            has_active_session = False
+            
+            if items:
+                print('items', items)
+                
+                # Check if any sessions are currently active
+                active_sessions = [item for item in items if item.get("active") is True]
+                if active_sessions:
+                    has_active_session = True
+                    most_recent_stop_time = "User is currently online"
+                else:
+                    # Only process inactive sessions with valid timestamps
+                    inactive_items = []
+                    for item in items:
+                        acctstoptime = item.get("acctstoptime")
+                        # Only include items with valid timestamp strings (not integers)
+                        if acctstoptime and isinstance(acctstoptime, str):
+                            inactive_items.append(item)
+                    
+                    if inactive_items:
+                        # Sort by acctstoptime to find the most recent
+                        sorted_items = sorted(
+                            inactive_items, 
+                            key=lambda x: x.get("acctstoptime", ""), 
+                            reverse=True
+                        )
+                        if sorted_items:
+                            most_recent_stop_time = sorted_items[0].get("acctstoptime")
+                    else:
+                        most_recent_stop_time = "Unknown"
+                
+                print('most_recent_stop_time', most_recent_stop_time)
+
+
+            # Get total data used (in bytes, convert to GB for readability)
+            total_data_bytes = int(meta_data.get("totalInOut", 0))
+            total_data_gb = round(total_data_bytes / (1024 * 1024 * 1024), 2)
+
+            # Get total time connected (sum of all session times in seconds, convert to hours)
+            total_time_seconds = sum(int(item.get("acctsessiontime", 0)) for item in items)
+            total_time_hours = round(total_time_seconds / 3600, 2)
+
+            # Return manageable summary data
+            summary_data = {
+                "voucher_code": voucher_code,
+                "status": "used",
+                "most_recent_stop_time": most_recent_stop_time,
+                "total_data_used_gb": total_data_gb,
+                "total_time_connected_hours": total_time_hours,
+                "total_sessions": len(items),
+                "total_data_bytes": total_data_bytes,
+                "total_time_seconds": total_time_seconds
             }
 
-            return Response(filtered_stats, status=status.HTTP_200_OK)
+            return Response(summary_data, status=status.HTTP_200_OK)
 
         except Exception as e:
+            logger.error(f"Error fetching voucher stats: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
     @action(detail=False, methods=['get'])
@@ -245,11 +323,14 @@ class VoucherViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         vouchers = Voucher.objects.filter(user=user).order_by('-created_at')
+        
 
         # Use pagination
         paginator = VoucherPagination()
         page = paginator.paginate_queryset(vouchers, request)
         serializer = self.get_serializer(page, many=True)
+        for voucher in serializer.data:
+            logger.info(f"Voucher: {voucher}")
         return paginator.get_paginated_response(serializer.data)
 
     @action(
@@ -424,6 +505,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                         realm=radius_desk_realm_db,
                         cloud=radius_desk_cloud_db,
                         radius_desk_instance=radius_desk_instance_db,
+                        profile=radius_desk_profile_db,
                         wallet_address=sender_address,
                     )
                     created_vouchers.append(voucher_obj)
@@ -435,6 +517,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
                         realm=radius_desk_realm_db,
                         cloud=radius_desk_cloud_db,
                         radius_desk_instance=radius_desk_instance_db,
+                        profile=radius_desk_profile_db,
                         user=user_db
                     )
                     created_vouchers.append(voucher_obj)

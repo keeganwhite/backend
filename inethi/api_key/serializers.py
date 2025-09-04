@@ -5,5 +5,6 @@ from .models import APIKey
 class APIKeySerializer(serializers.ModelSerializer):
     class Meta:
         model = APIKey
-        fields = ["id", "key", "created_at", "is_active", "user"]
-        read_only_fields = ["key", "created_at", "user"]
+        fields = ["id", "created_at", "is_active", "user"]
+        read_only_fields = ["created_at", "user"]
+        # Explicitly exclude sensitive field: key

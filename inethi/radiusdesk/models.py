@@ -100,6 +100,14 @@ class Voucher(models.Model):
         on_delete=models.CASCADE,
         related_name="vouchers"
     )
+    profile = models.ForeignKey(
+        RadiusDeskProfile,
+        on_delete=models.CASCADE,
+        related_name="vouchers",
+        blank=True,
+        null=True,
+        help_text="The specific profile used to create this voucher"
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,

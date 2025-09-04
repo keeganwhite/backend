@@ -9,10 +9,12 @@ from utils.keycloak import KeycloakAuthentication
 from .serializers import WalletSerializer
 from rest_framework.exceptions import PermissionDenied
 from django.conf import settings
-
+import logging
 from utils.crypto import decrypt_private_key
 from utils.radius_desk import check_token, login, create_voucher
 from radiusdesk.models import RadiusDeskInstance, Voucher, RadiusDeskProfile
+
+logger = logging.getLogger(__name__)
 
 
 class WalletViewSet(viewsets.ModelViewSet):
@@ -343,6 +345,18 @@ class WalletViewSet(viewsets.ModelViewSet):
                 'transactionIndex': tx_receipt.transactionIndex
             }
 
+            # create transaction record in database
+            Transaction.objects.create(
+                sender=request.user,
+                recipient_address=recipient_address,
+                amount=float(amount),
+                block_hash=tx_receipt.blockHash.hex(),
+                transaction_hash=tx_receipt.transactionHash.hex(),
+                block_number=tx_receipt.blockNumber,
+                gas_used=tx_receipt.gasUsed,
+                category='Transfer'
+            )
+
             return Response(
                 {'transaction_receipt': tx_receipt_dict},
                 status=status.HTTP_200_OK
@@ -475,7 +489,8 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         wallet = Wallet.objects.filter(user=request.user).first()
-
+        logger.info(f"request.radius_desk_instance_pk: {request.data.get('radius_desk_instance_pk')}")
+        logger.info(f"request.voucher_profile_pk: {request.data.get('voucher_profile_pk')}")
         # Validate input
         radius_desk_instance_pk = request.data.get('radius_desk_instance_pk')
         voucher_profile_pk = request.data.get('voucher_profile_pk')
@@ -496,6 +511,7 @@ class WalletViewSet(viewsets.ModelViewSet):
             voucher_profile = RadiusDeskProfile.objects.get(
                 pk=voucher_profile_pk
             )
+            
         except (
             RadiusDeskInstance.DoesNotExist,
             RadiusDeskProfile.DoesNotExist
@@ -604,6 +620,7 @@ class WalletViewSet(viewsets.ModelViewSet):
             realm=voucher_profile.realm,
             cloud=voucher_profile.cloud,
             radius_desk_instance=instance,
+            profile=voucher_profile,
             user=request.user,
             wallet_address=wallet.address
         )
