@@ -13,7 +13,7 @@ class RadiusDeskInstanceSerializer(serializers.ModelSerializer):
         model = RadiusDeskInstance
         fields = [
             'id',
-            'name', 
+            'name',
             'base_url',
             'administrators',
             'accepts_crypto'

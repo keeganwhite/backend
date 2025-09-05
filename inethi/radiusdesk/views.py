@@ -172,12 +172,12 @@ class VoucherViewSet(viewsets.ModelViewSet):
         """
         Retrieve summary statistics for a single voucher using its voucher_code.
         Uses the radaccts endpoint to get session data and returns a manageable summary.
-        
+
         Requires:
          - voucher_code (string)
          - radius_desk_instance_pk (primary key)
          - radius_desk_cloud_pk (primary key)
-         
+
         Returns:
          - voucher_code: The voucher code
          - status: "used" if voucher has been used, "unused" if not used yet
@@ -192,9 +192,9 @@ class VoucherViewSet(viewsets.ModelViewSet):
         voucher_code = request.query_params.get("voucher_code")
         radius_desk_instance_pk = request.query_params.get("radius_desk_instance_pk")
         radius_desk_cloud_pk = request.query_params.get("radius_desk_cloud_pk")
-        
+
         logger.info(f"Fetching voucher stats for voucher_code: {voucher_code}")
-        
+
         if not voucher_code or not radius_desk_instance_pk or not radius_desk_cloud_pk:
             return Response(
                 {"error": "voucher_code, radius_desk_instance_pk, and radius_desk_cloud_pk are required."},
@@ -252,18 +252,16 @@ class VoucherViewSet(viewsets.ModelViewSet):
 
             # Process the data to get manageable summary
             meta_data = voucher_stats_response.get("metaData", {})
-            
+
             # Find the most recent stop time and check for active sessions
             most_recent_stop_time = None
-            has_active_session = False
-            
+
             if items:
                 print('items', items)
-                
+
                 # Check if any sessions are currently active
                 active_sessions = [item for item in items if item.get("active") is True]
                 if active_sessions:
-                    has_active_session = True
                     most_recent_stop_time = "User is currently online"
                 else:
                     # Only process inactive sessions with valid timestamps
@@ -273,21 +271,20 @@ class VoucherViewSet(viewsets.ModelViewSet):
                         # Only include items with valid timestamp strings (not integers)
                         if acctstoptime and isinstance(acctstoptime, str):
                             inactive_items.append(item)
-                    
+
                     if inactive_items:
                         # Sort by acctstoptime to find the most recent
                         sorted_items = sorted(
-                            inactive_items, 
-                            key=lambda x: x.get("acctstoptime", ""), 
+                            inactive_items,
+                            key=lambda x: x.get("acctstoptime", ""),
                             reverse=True
                         )
                         if sorted_items:
                             most_recent_stop_time = sorted_items[0].get("acctstoptime")
                     else:
                         most_recent_stop_time = "Unknown"
-                
-                print('most_recent_stop_time', most_recent_stop_time)
 
+                print('most_recent_stop_time', most_recent_stop_time)
 
             # Get total data used (in bytes, convert to GB for readability)
             total_data_bytes = int(meta_data.get("totalInOut", 0))
@@ -323,7 +320,6 @@ class VoucherViewSet(viewsets.ModelViewSet):
         """
         user = request.user
         vouchers = Voucher.objects.filter(user=user).order_by('-created_at')
-        
 
         # Use pagination
         paginator = VoucherPagination()

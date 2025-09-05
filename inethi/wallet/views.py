@@ -439,6 +439,19 @@ class WalletViewSet(viewsets.ModelViewSet):
                 'transactionIndex': tx_receipt.transactionIndex
             }
 
+            # create transaction record in database
+            Transaction.objects.create(
+                sender=request.user,
+                recipient=receiver,
+                recipient_address=recipient_address,
+                amount=float(amount),
+                block_hash=tx_receipt.blockHash.hex(),
+                transaction_hash=tx_receipt.transactionHash.hex(),
+                block_number=tx_receipt.blockNumber,
+                gas_used=tx_receipt.gasUsed,
+                category='Transfer'
+            )
+
             return Response(
                 {'transaction_receipt': tx_receipt_dict},
                 status=status.HTTP_200_OK
@@ -511,7 +524,7 @@ class WalletViewSet(viewsets.ModelViewSet):
             voucher_profile = RadiusDeskProfile.objects.get(
                 pk=voucher_profile_pk
             )
-            
+
         except (
             RadiusDeskInstance.DoesNotExist,
             RadiusDeskProfile.DoesNotExist
