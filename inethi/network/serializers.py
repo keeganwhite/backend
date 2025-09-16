@@ -34,5 +34,5 @@ class PingSerializer(serializers.ModelSerializer):
 class NetworkSerializer(serializers.ModelSerializer):
     class Meta:
         model = Network
-        fields = '__all__'
-        read_only_fields = ['created_by']
+        fields = ['id', 'name', 'created_by', 'created_at']
+        read_only_fields = ['created_by', 'created_at']
