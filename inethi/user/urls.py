@@ -22,4 +22,20 @@ urlpatterns = [
     path('token/', views.CreateTokenView.as_view(), name='token'),
     path('me/', views.ManageUserView.as_view(), name='me'),
     path('refresh/', views.RefreshTokenView.as_view(), name='refresh-token'),
+    # Admin endpoints
+    path(
+        'admin/users/',
+        views.AdminUserListView.as_view(),
+        name='admin-users-list'
+    ),
+    path(
+        'admin/users/<int:pk>/',
+        views.AdminUserDetailView.as_view(),
+        name='admin-users-detail'
+    ),
+    path(
+        'admin/users/<int:pk>/update/',
+        views.AdminUserUpdateView.as_view(),
+        name='admin-users-update'
+    ),
 ]

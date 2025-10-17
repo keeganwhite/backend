@@ -83,6 +83,54 @@ class RadiusDeskProfile(models.Model):
         return self.name
 
 
+class RadiusDeskUser(models.Model):
+    """
+    Junction table linking Users to RadiusDeskInstances.
+    Stores the permanent user credentials and RadiusDesk ID for each user-instance pair.
+    """
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="radiusdesk_users",
+        help_text="The application user"
+    )
+    radius_desk_instance = models.ForeignKey(
+        RadiusDeskInstance,
+        on_delete=models.CASCADE,
+        related_name="radiusdesk_users",
+        help_text="The RadiusDesk instance this user belongs to"
+    )
+    username = models.CharField(
+        max_length=255,
+        help_text="Username in the RadiusDesk instance"
+    )
+    password = models.CharField(
+        max_length=255,
+        help_text="Password for the RadiusDesk permanent user"
+    )
+    radiusdesk_id = models.IntegerField(
+        help_text="The permanent user ID from RadiusDesk API"
+    )
+    profile = models.ForeignKey(
+        RadiusDeskProfile,
+        on_delete=models.SET_NULL,
+        related_name="radiusdesk_users",
+        null=True,
+        blank=True,
+        help_text="The profile assigned to this permanent user"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = ('user', 'radius_desk_instance')
+        verbose_name = "RadiusDesk User"
+        verbose_name_plural = "RadiusDesk Users"
+
+    def __str__(self):
+        return f"{self.user.username} @ {self.radius_desk_instance.name}"
+
+
 class Voucher(models.Model):
     voucher_code = models.CharField(max_length=255)
     realm = models.ForeignKey(

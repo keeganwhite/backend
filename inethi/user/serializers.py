@@ -30,6 +30,14 @@ class UserSerializer(serializers.ModelSerializer):
             'first_name',
             'last_name',
             'phone_number',
+            'radiusdesk_username',
+            'radiusdesk_password',
+            'imsi',
+            'product_id_data',
+            'product_id_cents',
+            'is_active',
+            'is_staff',
+            'is_superuser',
             'password'
         ]
         extra_kwargs = {
@@ -37,6 +45,14 @@ class UserSerializer(serializers.ModelSerializer):
             'username': {'required': True},
             'phone_number': {'required': False},  # Optional phone number
             'email': {'required': False},  # Optional email
+            'radiusdesk_username': {'required': False},
+            'radiusdesk_password': {'required': False},
+            'imsi': {'required': False},
+            'product_id_data': {'required': False},
+            'product_id_cents': {'required': False},
+            'is_active': {'read_only': True},
+            'is_staff': {'read_only': True},
+            'is_superuser': {'read_only': True},
         }
 
     def validate_email(self, value):
@@ -199,3 +215,75 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
             raise serializers.ValidationError(
                 f'Failed to refresh token: {str(e)}'
             )
+
+
+class AdminUserSerializer(serializers.ModelSerializer):
+    """Admin serializer for full user management"""
+    has_imsi = serializers.SerializerMethodField()
+    has_wallet = serializers.SerializerMethodField()
+    wallet_address = serializers.SerializerMethodField()
+
+    class Meta:
+        model = get_user_model()
+        fields = [
+            'id',
+            'email',
+            'username',
+            'first_name',
+            'last_name',
+            'phone_number',
+            'radiusdesk_username',
+            'radiusdesk_password',
+            'imsi',
+            'product_id_data',
+            'product_id_cents',
+            'is_active',
+            'is_staff',
+            'is_superuser',
+            'has_imsi',
+            'has_wallet',
+            'wallet_address',
+            'password'
+        ]
+        extra_kwargs = {
+            'password': {'write_only': True, 'min_length': 5, 'required': False},
+            'username': {'required': False},
+            'email': {'required': False},
+            'phone_number': {'required': False},
+            'radiusdesk_username': {'required': False},
+            'radiusdesk_password': {'required': False},
+            'imsi': {'required': False},
+            'product_id_data': {'required': False},
+            'product_id_cents': {'required': False},
+            'is_active': {'required': False},
+            'is_staff': {'required': False},
+            'is_superuser': {'required': False},
+        }
+
+    def get_has_imsi(self, obj):
+        """Check if user has IMSI"""
+        return bool(obj.imsi)
+
+    def get_has_wallet(self, obj):
+        """Check if user has a wallet"""
+        return hasattr(obj, 'wallet_set') and obj.wallet_set.exists()
+
+    def get_wallet_address(self, obj):
+        """Get user's wallet address if exists"""
+        if hasattr(obj, 'wallet_set') and obj.wallet_set.exists():
+            wallet = obj.wallet_set.first()
+            return wallet.address
+        return None
+
+    def update(self, instance, validated_data):
+        """Update user with encrypted password and all fields"""
+        password = validated_data.pop('password', None)
+        logger.info(
+            f"Admin updating user: {instance} with data: {validated_data}"
+        )
+        user = super().update(instance, validated_data)
+        if password:
+            user.set_password(password)
+            user.save()
+            logger.info(f"Password updated for user: {user}")
+        return user

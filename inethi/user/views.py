@@ -15,15 +15,27 @@ from rest_framework.response import Response
 from rest_framework.settings import api_settings
 from django.conf import settings
 from rest_framework.views import APIView
+from rest_framework.pagination import PageNumberPagination
+from django_filters import rest_framework as django_filters
 from utils.keycloak import KeycloakAuthentication
+from utils.super_user_or_api_key import IsSuperUserOrAPIKeyUser
 from .serializers import (
     UserSerializer,
-    KeycloakAuthTokenSerializer
+    KeycloakAuthTokenSerializer,
+    AdminUserSerializer
 )
+from .filters import UserFilter
 from rest_framework.generics import RetrieveAPIView
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+class AdminUserPagination(PageNumberPagination):
+    """Custom pagination for admin user list"""
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 
 def create_user(**params):
@@ -242,3 +254,104 @@ class UserSearchView(generics.ListAPIView):
         except Exception as e:
             logger.error(f"User search failed: {e}")
             raise
+
+
+class AdminUserListView(generics.ListAPIView):
+    """
+    Admin endpoint to list all users with filtering and search.
+    Supports filtering by has_imsi, has_wallet, is_active, is_staff, is_superuser
+    and searching by username, email, first_name, last_name.
+    """
+    serializer_class = AdminUserSerializer
+    authentication_classes = (KeycloakAuthentication,)
+    permission_classes = (IsSuperUserOrAPIKeyUser,)
+    queryset = get_user_model().objects.all()
+    filter_backends = [django_filters.DjangoFilterBackend]
+    filterset_class = UserFilter
+    pagination_class = AdminUserPagination
+
+    def get_queryset(self):
+        """Optimize queryset with prefetch for wallet data"""
+        return get_user_model().objects.prefetch_related('wallet_set').all()
+
+    def get(self, request, *args, **kwargs):
+        logger.info(
+            f"Admin user list requested by {request.user} with params: {request.query_params}"
+        )
+        try:
+            return super().get(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Admin user list failed: {e}")
+            raise
+
+
+class AdminUserDetailView(generics.RetrieveAPIView):
+    """
+    Admin endpoint to retrieve detailed information about a specific user.
+    """
+    serializer_class = AdminUserSerializer
+    authentication_classes = (KeycloakAuthentication,)
+    permission_classes = (IsSuperUserOrAPIKeyUser,)
+    queryset = get_user_model().objects.all()
+    lookup_field = 'pk'
+
+    def get_queryset(self):
+        """Optimize queryset with prefetch for wallet data"""
+        return get_user_model().objects.prefetch_related('wallet_set').all()
+
+    def get(self, request, *args, **kwargs):
+        logger.info(
+            f"Admin user detail requested by {request.user} for user {kwargs.get('pk')}"
+        )
+        try:
+            return super().get(request, *args, **kwargs)
+        except Exception as e:
+            logger.error(f"Admin user detail failed: {e}")
+            raise
+
+
+class AdminUserUpdateView(generics.UpdateAPIView):
+    """
+    Admin endpoint to update user information.
+    Supports both PATCH and PUT methods.
+    """
+    serializer_class = AdminUserSerializer
+    authentication_classes = (KeycloakAuthentication,)
+    permission_classes = (IsSuperUserOrAPIKeyUser,)
+    queryset = get_user_model().objects.all()
+    lookup_field = 'pk'
+
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+        partial = kwargs.pop('partial', False)
+        logger.info(
+            f"Admin user update requested by {request.user} for user {user.id} with data: {request.data}"
+        )
+        serializer = self.get_serializer(
+            user,
+            data=request.data,
+            partial=partial
+        )
+        serializer.is_valid(raise_exception=True)
+        self.perform_update(serializer)
+        try:
+            # Only update Keycloak for non-admin fields
+            keycloak_data = {
+                'first_name': request.data.get('first_name', user.first_name),
+                'last_name': request.data.get('last_name', user.last_name),
+            }
+            update_keycloak_user(user, keycloak_data)
+            logger.info(f"User {user.id} updated successfully by admin.")
+        except Exception as e:
+            logger.error(f"Failed to update Keycloak user for {user}: {e}")
+        return Response(serializer.data)
+
+    def patch(self, request, *args, **kwargs):
+        """Override the patch method"""
+        kwargs['partial'] = True
+        return self.update(request, *args, **kwargs)
+
+    def put(self, request, *args, **kwargs):
+        """Override the put method"""
+        kwargs['partial'] = False
+        return self.update(request, *args, **kwargs)

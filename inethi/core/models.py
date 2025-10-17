@@ -91,6 +91,11 @@ class User(AbstractBaseUser, PermissionsMixin):
     first_name = models.CharField(max_length=255, blank=True, null=True)
     last_name = models.CharField(max_length=255, blank=True, null=True)
     phone_number = models.CharField(max_length=15, blank=True, null=True)
+    radiusdesk_username = models.CharField(max_length=255, blank=True, null=True)
+    radiusdesk_password = models.CharField(max_length=255, blank=True, null=True)
+    imsi = models.CharField(max_length=20, blank=True, null=True)
+    product_id_data = models.CharField(max_length=50, blank=True, null=True)
+    product_id_cents = models.CharField(max_length=50, blank=True, null=True)
     is_active = models.BooleanField(default=True)
     is_staff = models.BooleanField(default=False)
     USERNAME_FIELD = 'email'  # this is used for auth purposes

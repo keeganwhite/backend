@@ -11,7 +11,8 @@ from rest_framework.exceptions import PermissionDenied
 from django.conf import settings
 import logging
 from utils.crypto import decrypt_private_key
-from utils.radius_desk import check_token, login, create_voucher
+from utils.radiusdesk_client import RadiusDeskClientManager
+from radiusdesk_api.exceptions import APIError, AuthenticationError
 from radiusdesk.models import RadiusDeskInstance, Voucher, RadiusDeskProfile
 
 logger = logging.getLogger(__name__)
@@ -573,35 +574,35 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-        # Validate or refresh the instance token if necessary
-        if not instance.token or not check_token(
-            instance.token, instance.base_url
-        ):
-            instance.token = login(
-                username=instance.username,
-                password=instance.password,
-                base_url=instance.base_url
-            )
-            instance.save()
-
-        # Generate a voucher code via the RadiusDesk API
+        # Get the RadiusDesk client and generate a voucher code
         try:
-            voucher_code = create_voucher(
-                token=instance.token,
-                base_url=instance.base_url,
-                cloud_id=voucher_profile.cloud.radius_desk_id,
+            client = RadiusDeskClientManager.get_client(instance)
+
+            voucher_response = client.vouchers.create(
                 realm_id=voucher_profile.realm.radius_desk_id,
                 profile_id=voucher_profile.radius_desk_id,
                 quantity=1
             )
 
-        except Exception as e:
+            # Extract voucher code from response (single voucher returns dict)
+            voucher_code = voucher_response['name']
+
+        except AuthenticationError as e:
+            logger.error(f"Authentication error creating voucher: {str(e)}")
             return Response(
-                {
-                    "error": f"Failed to create voucher code: {str(e)}",
-                    "instance": instance.token,
-                    "base_url": instance.base_url
-                },
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error creating voucher: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Failed to create voucher code: {str(e)}")
+            return Response(
+                {"error": f"Failed to create voucher code: {str(e)}"},
                 status=status.HTTP_400_BAD_REQUEST
             )
 

@@ -4,7 +4,8 @@ from .models import (
     Cloud,
     Realm,
     RadiusDeskProfile,
-    Voucher
+    Voucher,
+    RadiusDeskUser
 )
 
 admin.site.register(RadiusDeskInstance)
@@ -12,3 +13,4 @@ admin.site.register(Cloud)
 admin.site.register(Realm)
 admin.site.register(RadiusDeskProfile)
 admin.site.register(Voucher)
+admin.site.register(RadiusDeskUser)

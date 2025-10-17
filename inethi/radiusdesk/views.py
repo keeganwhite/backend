@@ -2,7 +2,7 @@
 from rest_framework import viewsets, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.pagination import PageNumberPagination
 import logging
 from decimal import Decimal
@@ -12,23 +12,22 @@ from .models import (
     Cloud,
     Realm,
     RadiusDeskProfile,
-    Voucher
+    Voucher,
+    RadiusDeskUser
 )
 from .serializers import (
     RadiusDeskInstanceSerializer,
+    PublicRadiusDeskInstanceSerializer,
     CloudSerializer,
     RealmSerializer,
     RadiusDeskProfileSerializer,
     VoucherSerializer,
+    RadiusDeskUserSerializer,
+    CreateRadiusDeskUserSerializer,
+    AddDataTopUpSerializer
 )
-from utils.radius_desk import (
-    check_token,
-    login,
-    create_voucher,
-    fetch_vouchers,
-    fetch_voucher_details,
-    fetch_voucher_stats
-)
+from utils.radiusdesk_client import RadiusDeskClientManager
+from radiusdesk_api.exceptions import APIError, AuthenticationError
 from utils.keycloak import KeycloakAuthentication
 from utils.super_user_or_api_key import IsSuperUserOrAPIKeyUser
 from utils.super_user_or_api_key_or_network_admin import (
@@ -91,6 +90,18 @@ class RadiusDeskInstanceViewSet(viewsets.ModelViewSet):
                 profiles, many=True).data
             results.append(instance_data)
         return Response(results, status=status.HTTP_200_OK)
+
+
+class PublicRadiusDeskInstanceViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    Public read-only viewset for RadiusDeskInstance.
+    Returns only non-sensitive information (id, name, accepts_crypto).
+    No authentication required.
+    """
+    queryset = RadiusDeskInstance.objects.all()
+    serializer_class = PublicRadiusDeskInstanceSerializer
+    permission_classes = [AllowAny]
+    authentication_classes = []
 
 
 class CloudViewSet(viewsets.ModelViewSet):
@@ -206,22 +217,12 @@ class VoucherViewSet(viewsets.ModelViewSet):
             instance = RadiusDeskInstance.objects.get(pk=radius_desk_instance_pk)
             cloud_obj = Cloud.objects.get(pk=radius_desk_cloud_pk)
 
-            # Validate or refresh the token if necessary
-            token_valid = check_token(instance.token, instance.base_url)
-            if not token_valid:
-                instance.token = login(
-                    username=instance.username,
-                    password=instance.password,
-                    base_url=instance.base_url
-                )
-                instance.save()
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(instance)
 
             # Fetch specific voucher details using the radaccts endpoint
-            voucher_stats_response = fetch_voucher_details(
-                token=instance.token,
+            voucher_stats_response = client.vouchers.get_details(
                 voucher_code=voucher_code,
-                cloud_id=cloud_obj.radius_desk_id,
-                base_url=instance.base_url,
                 limit=150
             )
 
@@ -308,6 +309,18 @@ class VoucherViewSet(viewsets.ModelViewSet):
 
             return Response(summary_data, status=status.HTTP_200_OK)
 
+        except AuthenticationError as e:
+            logger.error(f"Authentication error fetching voucher stats: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error fetching voucher stats: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
             logger.error(f"Error fetching voucher stats: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -441,23 +454,8 @@ class VoucherViewSet(viewsets.ModelViewSet):
         radius_desk_realm_db = Realm.objects.get(pk=radius_desk_realm_pk)
 
         try:
-            if not radius_desk_token:
-                print('token not found')
-                token_valid = False
-            else:
-                token_valid = check_token(
-                    radius_desk_token,
-                    radius_desk_base_url
-                )
-            if not token_valid:
-                print('token not valid')
-                radius_desk_token = login(
-                    username=radius_desk_instance_db.username,
-                    password=radius_desk_instance_db.password,
-                    base_url=radius_desk_base_url
-                )
-            radius_desk_instance_db.token = radius_desk_token
-            radius_desk_instance_db.save()
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(radius_desk_instance_db)
 
             # **Transaction Logic (Optional)**
             sender_address = request.data.get('sender_address')
@@ -466,10 +464,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
             category = request.data.get('category', 'INTERNET_COUPON')
             token = request.data.get('token')
 
-            voucher_response = create_voucher(
-                token=radius_desk_token,
-                base_url=radius_desk_base_url,
-                cloud_id=radius_desk_cloud_db.radius_desk_id,
+            voucher_response = client.vouchers.create(
                 realm_id=radius_desk_realm_db.radius_desk_id,
                 profile_id=radius_desk_profile_db.radius_desk_id,
                 quantity=quantity,
@@ -477,11 +472,11 @@ class VoucherViewSet(viewsets.ModelViewSet):
 
             # Handle single vs multiple vouchers
             if quantity == 1:
-                # Single voucher - voucher_response is just the voucher code
-                voucher_codes = [voucher_response]
+                # Single voucher - voucher_response is a dict with 'name' key
+                voucher_codes = [voucher_response['name']]
             else:
-                # Multiple vouchers - extract voucher codes from JSON response
-                voucher_codes = [voucher['name'] for voucher in voucher_response['data']]
+                # Multiple vouchers - voucher_response is a list of dicts
+                voucher_codes = [voucher['name'] for voucher in voucher_response]
 
             created_vouchers = []
 
@@ -530,7 +525,20 @@ class VoucherViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_201_CREATED
                 )
 
+        except AuthenticationError as e:
+            logger.error(f"Authentication error adding voucher: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error adding voucher: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
+            logger.error(f"Error adding voucher: {str(e)}")
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -607,28 +615,10 @@ class VoucherViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_403_FORBIDDEN
                     )
 
-            radius_desk_token = radius_desk_instance_db.token
-            radius_desk_base_url = radius_desk_instance_db.base_url
-            radius_desk_cloud_db = Cloud.objects.get(pk=radius_desk_cloud_pk)
-            token_valid = check_token(
-                radius_desk_token,
-                radius_desk_base_url
-            )
-            if not token_valid:
-                radius_desk_token = login(
-                    username=radius_desk_instance_db.username,
-                    password=radius_desk_instance_db.password,
-                    base_url=radius_desk_base_url
-                )
-                radius_desk_instance_db.token = radius_desk_token
-                radius_desk_instance_db.save()
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(radius_desk_instance_db)
 
-            voucher_stats = fetch_vouchers(
-                token=radius_desk_token,
-                cloud_id=radius_desk_cloud_db.radius_desk_id,
-                base_url=radius_desk_base_url,
-                limit=limit
-            )
+            voucher_stats = client.vouchers.list(limit=limit)
 
             filtered_vouchers = [
                 {
@@ -650,7 +640,20 @@ class VoucherViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_200_OK
             )
 
+        except AuthenticationError as e:
+            logger.error(f"Authentication error getting voucher stats: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error getting voucher stats: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
+            logger.error(f"Error getting voucher stats: {str(e)}")
             return Response(
                 {"error": str(e)},
                 status=status.HTTP_400_BAD_REQUEST
@@ -755,22 +758,12 @@ class VoucherViewSet(viewsets.ModelViewSet):
             instance = RadiusDeskInstance.objects.get(pk=radius_desk_instance_pk)
             cloud_obj = Cloud.objects.get(pk=radius_desk_cloud_pk)
 
-            # Validate or refresh the token if necessary
-            token_valid = check_token(instance.token, instance.base_url)
-            if not token_valid:
-                instance.token = login(
-                    username=instance.username,
-                    password=instance.password,
-                    base_url=instance.base_url
-                )
-                instance.save()
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(instance)
 
             # Fetch detailed stats from RADIUSdesk API
-            voucher_stats_response = fetch_voucher_stats(
-                token=instance.token,
-                voucher_code=voucher_code,
-                cloud_id=cloud_obj.radius_desk_id,
-                base_url=instance.base_url
+            voucher_stats_response = client.vouchers.get_details(
+                voucher_code=voucher_code
             )
 
             # Get profile information
@@ -802,8 +795,285 @@ class VoucherViewSet(viewsets.ModelViewSet):
 
             return Response(response_data, status=status.HTTP_200_OK)
 
+        except AuthenticationError as e:
+            logger.error(f"Authentication error getting detailed voucher stats: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error getting detailed voucher stats: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
         except Exception as e:
+            logger.error(f"Error getting detailed voucher stats: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+class RadiusDeskUserViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing RadiusDesk permanent users.
+    Allows users to create permanent users in RadiusDesk instances and manage their data top-ups.
+    """
+    serializer_class = RadiusDeskUserSerializer
+    authentication_classes = [KeycloakOrAPIKeyAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Return only the authenticated user's RadiusDesk users."""
+        return RadiusDeskUser.objects.filter(user=self.request.user).select_related(
+            'radius_desk_instance', 'profile', 'user'
+        )
+
+    @action(detail=False, methods=['post'], url_path='create-permanent-user')
+    def create_permanent_user(self, request):
+        """
+        Create a permanent user in a RadiusDesk instance for the authenticated user.
+        
+        Expects:
+          - radius_desk_instance_pk: PK of the RadiusDeskInstance
+          - profile_pk: PK of the RadiusDeskProfile to assign
+          - password: Password for the permanent user
+          - username (optional): Username (auto-generated if not provided)
+          - name, surname, email, phone (optional): User details
+        """
+        serializer = CreateRadiusDeskUserSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        radius_desk_instance_pk = serializer.validated_data['radius_desk_instance_pk']
+        profile_pk = serializer.validated_data['profile_pk']
+        password = serializer.validated_data['password']
+        username = serializer.validated_data.get('username', '')
+        name = serializer.validated_data.get('name', '')
+        surname = serializer.validated_data.get('surname', '')
+        email = serializer.validated_data.get('email', '')
+        phone = serializer.validated_data.get('phone', '')
+
+        try:
+            # Get the RadiusDesk instance and profile
+            instance = RadiusDeskInstance.objects.get(pk=radius_desk_instance_pk)
+            profile = RadiusDeskProfile.objects.get(pk=profile_pk)
+
+            # Check if user already has an account in this instance
+            if RadiusDeskUser.objects.filter(
+                user=request.user,
+                radius_desk_instance=instance
+            ).exists():
+                return Response(
+                    {"error": "You already have a permanent user in this RadiusDesk instance."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            # Auto-generate username if not provided
+            if not username:
+                username = f"{request.user.username}@{profile.realm.name}".lower()
+
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(instance)
+
+            # Create permanent user in RadiusDesk
+            user_response = client.users.create(
+                username=username,
+                password=password,
+                realm_id=profile.realm.radius_desk_id,
+                profile_id=profile.radius_desk_id,
+                name=name or request.user.first_name or '',
+                surname=surname or request.user.last_name or '',
+                email=email or request.user.email or '',
+                phone=phone or ''
+            )
+
+            logger.info(f"Created permanent user in RadiusDesk: {user_response}")
+
+            # Create RadiusDeskUser record
+            radiusdesk_user = RadiusDeskUser.objects.create(
+                user=request.user,
+                radius_desk_instance=instance,
+                username=username,
+                password=password,
+                radiusdesk_id=user_response['id'],
+                profile=profile
+            )
+
+            response_serializer = RadiusDeskUserSerializer(radiusdesk_user)
+            return Response(
+                response_serializer.data,
+                status=status.HTTP_201_CREATED
+            )
+
+        except RadiusDeskInstance.DoesNotExist:
+            return Response(
+                {"error": "RadiusDesk instance not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except RadiusDeskProfile.DoesNotExist:
+            return Response(
+                {"error": "RadiusDesk profile not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except AuthenticationError as e:
+            logger.error(f"Authentication error creating permanent user: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error creating permanent user: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error creating permanent user: {str(e)}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'], url_path='add-data')
+    def add_data(self, request, pk=None):
+        """
+        Add data top-up to a permanent user.
+        
+        Expects:
+          - amount: Amount of data to add
+          - unit: Unit (mb or gb)
+          - comment (optional): Comment for the top-up
+        """
+        radiusdesk_user = self.get_object()
+
+        serializer = AddDataTopUpSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        amount = serializer.validated_data['amount']
+        unit = serializer.validated_data['unit']
+        comment = serializer.validated_data.get('comment', '')
+
+        try:
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(
+                radiusdesk_user.radius_desk_instance
+            )
+
+            # Add data top-up
+            top_up_response = client.users.add_data(
+                user_id=radiusdesk_user.radiusdesk_id,
+                amount=amount,
+                unit=unit,
+                comment=comment
+            )
+
+            logger.info(
+                f"Added {amount}{unit} data to user {radiusdesk_user.username}: "
+                f"{top_up_response}"
+            )
+
+            return Response(
+                {
+                    "success": True,
+                    "message": f"Successfully added {amount}{unit} to {radiusdesk_user.username}",
+                    "radiusdesk_response": top_up_response
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except AuthenticationError as e:
+            logger.error(f"Authentication error adding data top-up: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error adding data top-up: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error adding data top-up: {str(e)}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+    @action(detail=True, methods=['post'], url_path='add-time')
+    def add_time(self, request, pk=None):
+        """
+        Add time top-up to a permanent user.
+        
+        Expects:
+          - amount: Amount of time to add
+          - unit: Unit (minutes, hours, or days)
+          - comment (optional): Comment for the top-up
+        """
+        radiusdesk_user = self.get_object()
+
+        # Reuse the data serializer but with different unit choices
+        data = request.data.copy()
+        amount = data.get('amount')
+        unit = data.get('unit', 'minutes')
+        comment = data.get('comment', '')
+
+        if not amount:
+            return Response(
+                {"error": "Amount is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if unit not in ['minutes', 'hours', 'days']:
+            return Response(
+                {"error": "Unit must be one of: minutes, hours, days"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(
+                radiusdesk_user.radius_desk_instance
+            )
+
+            # Add time top-up
+            top_up_response = client.users.add_time(
+                user_id=radiusdesk_user.radiusdesk_id,
+                amount=int(amount),
+                unit=unit,
+                comment=comment
+            )
+
+            logger.info(
+                f"Added {amount} {unit} to user {radiusdesk_user.username}: "
+                f"{top_up_response}"
+            )
+
+            return Response(
+                {
+                    "success": True,
+                    "message": f"Successfully added {amount} {unit} to {radiusdesk_user.username}",
+                    "radiusdesk_response": top_up_response
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except AuthenticationError as e:
+            logger.error(f"Authentication error adding time top-up: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error adding time top-up: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error adding time top-up: {str(e)}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
 
 class NetworkAdminVoucherViewSet(viewsets.ReadOnlyModelViewSet):

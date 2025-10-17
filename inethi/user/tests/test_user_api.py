@@ -266,7 +266,12 @@ class PrivateUserApiTests(TestCase):
             'email': self.user.email,
             'first_name': self.user.first_name,
             'last_name': self.user.last_name,
-            'phone_number': self.user.phone_number  # likely None
+            'phone_number': self.user.phone_number,  # likely None
+            'radiusdesk_username': self.user.radiusdesk_username,
+            'radiusdesk_password': self.user.radiusdesk_password,
+            'imsi': self.user.imsi,
+            'product_id_data': self.user.product_id_data,
+            'product_id_cents': self.user.product_id_cents,
         }
         self.assertEqual(res.data, expected)
 
