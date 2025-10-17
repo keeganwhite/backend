@@ -5,7 +5,9 @@ from .models import (
     Realm,
     RadiusDeskProfile,
     Voucher,
-    RadiusDeskUser
+    RadiusDeskUser,
+    InternetBundle,
+    BundlePurchase
 )
 
 
@@ -187,4 +189,71 @@ class AddDataTopUpSerializer(serializers.Serializer):
         allow_blank=True,
         default="",
         help_text="Optional comment for the top-up"
+    )
+
+
+class InternetBundleSerializer(serializers.ModelSerializer):
+    """Serializer for InternetBundle model."""
+    radius_desk_instance_name = serializers.CharField(
+        source="radius_desk_instance.name",
+        read_only=True
+    )
+
+    class Meta:
+        model = InternetBundle
+        fields = [
+            'id',
+            'name',
+            'radius_desk_instance',
+            'radius_desk_instance_name',
+            'price',
+            'payment_method',
+            'data_gb',
+            'time_minutes',
+            'is_data_bundle',
+            'is_active',
+            'created_at',
+            'updated_at'
+        ]
+        read_only_fields = ['id', 'created_at', 'updated_at']
+
+
+class BundlePurchaseSerializer(serializers.ModelSerializer):
+    """Serializer for BundlePurchase model."""
+    user_username = serializers.CharField(
+        source="user.username",
+        read_only=True
+    )
+    bundle_name = serializers.CharField(
+        source="bundle.name",
+        read_only=True
+    )
+    radiusdesk_username = serializers.CharField(
+        source="radiusdesk_user.username",
+        read_only=True
+    )
+
+    class Meta:
+        model = BundlePurchase
+        fields = [
+            'id',
+            'user',
+            'user_username',
+            'bundle',
+            'bundle_name',
+            'radiusdesk_user',
+            'radiusdesk_username',
+            'transaction',
+            'payment_method',
+            'amount_paid',
+            'purchase_date',
+            'status'
+        ]
+        read_only_fields = ['id', 'purchase_date']
+
+
+class PurchaseBundleSerializer(serializers.Serializer):
+    """Input serializer for purchasing a bundle."""
+    bundle_id = serializers.IntegerField(
+        help_text="ID of the InternetBundle to purchase"
     )

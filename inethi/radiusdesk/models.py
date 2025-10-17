@@ -168,3 +168,124 @@ class Voucher(models.Model):
 
     def __str__(self):
         return self.voucher_code
+
+
+class InternetBundle(models.Model):
+    """
+    Internet bundle that can be purchased for a RadiusDesk permanent user.
+    Can be either a data bundle (GB) or time bundle (minutes).
+    """
+    PAYMENT_METHOD_CHOICES = [
+        ('crypto', 'Cryptocurrency'),
+        ('one4you', 'One4You'),
+        ('other', 'Other'),
+    ]
+
+    name = models.CharField(
+        max_length=255,
+        help_text="Bundle name (e.g., '5GB Data Bundle')"
+    )
+    radius_desk_instance = models.ForeignKey(
+        RadiusDeskInstance,
+        on_delete=models.CASCADE,
+        related_name="internet_bundles",
+        help_text="The RadiusDesk instance this bundle is for"
+    )
+    price = models.FloatField(
+        help_text="Bundle cost"
+    )
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        help_text="Payment method accepted for this bundle"
+    )
+    data_gb = models.FloatField(
+        default=0,
+        help_text="Data amount in gigabytes (0 if time-based bundle)"
+    )
+    time_minutes = models.IntegerField(
+        default=0,
+        help_text="Time amount in minutes (0 if data-based bundle)"
+    )
+    is_data_bundle = models.BooleanField(
+        default=True,
+        help_text="True for data bundles, False for time bundles"
+    )
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Whether this bundle is currently available for purchase"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "Internet Bundle"
+        verbose_name_plural = "Internet Bundles"
+        ordering = ['-created_at']
+
+    def __str__(self):
+        bundle_type = f"{self.data_gb}GB" if self.is_data_bundle else f"{self.time_minutes}min"
+        return f"{self.name} ({bundle_type}) - {self.radius_desk_instance.name}"
+
+
+class BundlePurchase(models.Model):
+    """
+    Record of a bundle purchase by a user.
+    """
+    STATUS_CHOICES = [
+        ('success', 'Success'),
+        ('failed', 'Failed'),
+        ('pending', 'Pending'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="bundle_purchases",
+        help_text="The user who purchased the bundle"
+    )
+    bundle = models.ForeignKey(
+        InternetBundle,
+        on_delete=models.CASCADE,
+        related_name="purchases",
+        help_text="The bundle that was purchased"
+    )
+    radiusdesk_user = models.ForeignKey(
+        RadiusDeskUser,
+        on_delete=models.CASCADE,
+        related_name="bundle_purchases",
+        help_text="The RadiusDesk permanent user account"
+    )
+    transaction = models.ForeignKey(
+        'core.Transaction',
+        on_delete=models.SET_NULL,
+        related_name="bundle_purchases",
+        null=True,
+        blank=True,
+        help_text="The blockchain transaction (for crypto payments)"
+    )
+    payment_method = models.CharField(
+        max_length=20,
+        help_text="Payment method used"
+    )
+    amount_paid = models.FloatField(
+        help_text="Amount paid for the bundle"
+    )
+    purchase_date = models.DateTimeField(
+        auto_now_add=True,
+        help_text="Date and time of purchase"
+    )
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        help_text="Status of the purchase"
+    )
+
+    class Meta:
+        verbose_name = "Bundle Purchase"
+        verbose_name_plural = "Bundle Purchases"
+        ordering = ['-purchase_date']
+
+    def __str__(self):
+        return f"{self.user.username} - {self.bundle.name} - {self.status}"

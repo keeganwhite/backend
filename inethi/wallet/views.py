@@ -13,7 +13,15 @@ import logging
 from utils.crypto import decrypt_private_key
 from utils.radiusdesk_client import RadiusDeskClientManager
 from radiusdesk_api.exceptions import APIError, AuthenticationError
-from radiusdesk.models import RadiusDeskInstance, Voucher, RadiusDeskProfile
+from radiusdesk.models import (
+    RadiusDeskInstance,
+    Voucher,
+    RadiusDeskProfile,
+    InternetBundle,
+    BundlePurchase,
+    RadiusDeskUser
+)
+from radiusdesk.serializers import PurchaseBundleSerializer
 
 logger = logging.getLogger(__name__)
 
@@ -665,6 +673,259 @@ class WalletViewSet(viewsets.ModelViewSet):
         return Response(
             {
                 "voucher": voucher_code,
+                "transaction_receipt": tx_receipt_dict
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['post'], url_path='purchase-bundle')
+    def purchase_bundle(self, request):
+        """
+        Purchase an internet bundle by taking a crypto or one4you payment,
+        then automatically apply the data or time top-up to the user's
+        permanent RadiusDesk account.
+
+        Expects:
+          - bundle_id: PK of the InternetBundle to purchase.
+        """
+        # Validate user has wallet
+        wallet_exists = Wallet.objects.filter(user=request.user).exists()
+        if not wallet_exists:
+            return Response(
+                {'detail': 'Wallet not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        wallet = Wallet.objects.filter(user=request.user).first()
+
+        # Validate input
+        serializer = PurchaseBundleSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        bundle_id = serializer.validated_data['bundle_id']
+
+        # Retrieve the InternetBundle
+        try:
+            bundle = InternetBundle.objects.get(pk=bundle_id, is_active=True)
+        except InternetBundle.DoesNotExist:
+            return Response(
+                {"error": "Bundle not found or is not active."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get the RadiusDeskInstance from the bundle
+        instance = bundle.radius_desk_instance
+
+        # Verify user has a RadiusDeskUser for this instance
+        try:
+            radiusdesk_user = RadiusDeskUser.objects.get(
+                user=request.user,
+                radius_desk_instance=instance
+            )
+        except RadiusDeskUser.DoesNotExist:
+            return Response(
+                {
+                    "error": "You do not have a permanent account for this RadiusDesk instance."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check payment method
+        if bundle.payment_method == 'other':
+            return Response(
+                {"error": "This payment method is not supported."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        elif bundle.payment_method == 'one4you':
+            return Response(
+                {"error": "One4You payment method is not yet implemented."},
+                status=status.HTTP_501_NOT_IMPLEMENTED
+            )
+        elif bundle.payment_method != 'crypto':
+            return Response(
+                {"error": "Invalid payment method."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crypto payment flow
+        # Check that the instance accepts crypto payments
+        if not instance.accepts_crypto:
+            return Response(
+                {
+                    "error": "This RadiusDesk instance does not accept crypto.",
+                    "accepts_crypto": instance.accepts_crypto
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get network admin wallet address
+        network_admin = instance.administrators.first()
+        if not network_admin:
+            return Response(
+                {"error": "No network admin found for this instance."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        admin_wallet = Wallet.objects.filter(user=network_admin).first()
+        if not admin_wallet:
+            return Response(
+                {"error": "Network admin does not have a wallet."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Decrypt the user's private key
+        try:
+            decrypted_private_key = decrypt_private_key(wallet.private_key)
+        except Exception as e:
+            logger.error(f"Failed to decrypt wallet private key: {str(e)}")
+            return Response(
+                {"error": "Failed to decrypt wallet private key."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Perform the crypto transaction
+        try:
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+
+            tx_receipt = crypto_utils.send_to_wallet_address(
+                wallet.address,
+                decrypted_private_key,
+                admin_wallet.address,
+                float(bundle.price)
+            )
+        except Exception as e:
+            logger.error(f"Crypto transaction failed: {str(e)}")
+            return Response(
+                {"error": f"Transaction failed: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Record the transaction
+        transaction = Transaction.objects.create(
+            sender=request.user,
+            recipient_address=admin_wallet.address,
+            recipient=network_admin,
+            amount=float(bundle.price),
+            category="INTERNET_BUNDLE",
+            transaction_hash=tx_receipt.transactionHash.hex(),
+            block_number=tx_receipt.blockNumber,
+            block_hash=tx_receipt.blockHash.hex(),
+            gas_used=tx_receipt.gasUsed,
+            token="KRONE",
+        )
+
+        # Apply the top-up via RadiusDesk API
+        try:
+            client = RadiusDeskClientManager.get_client(instance)
+
+            if bundle.is_data_bundle:
+                # Apply data top-up
+                top_up_response = client.users.add_data(
+                    user_id=radiusdesk_user.radiusdesk_id,
+                    amount=int(bundle.data_gb),
+                    unit='gb',
+                    comment=f"Bundle purchase: {bundle.name}"
+                )
+                logger.info(
+                    f"Applied data top-up for user {request.user.username}: "
+                    f"{top_up_response}"
+                )
+            else:
+                # Apply time top-up
+                top_up_response = client.users.add_time(
+                    user_id=radiusdesk_user.radiusdesk_id,
+                    amount=bundle.time_minutes,
+                    unit='minutes',
+                    comment=f"Bundle purchase: {bundle.name}"
+                )
+                logger.info(
+                    f"Applied time top-up for user {request.user.username}: "
+                    f"{top_up_response}"
+                )
+
+        except AuthenticationError as e:
+            logger.error(f"Authentication error applying top-up: {str(e)}")
+            # Still create the purchase record as failed
+            BundlePurchase.objects.create(
+                user=request.user,
+                bundle=bundle,
+                radiusdesk_user=radiusdesk_user,
+                transaction=transaction,
+                payment_method='crypto',
+                amount_paid=float(bundle.price),
+                status='failed'
+            )
+            return Response(
+                {"error": f"Payment successful but top-up failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except APIError as e:
+            logger.error(f"API error applying top-up: {str(e)}")
+            # Still create the purchase record as failed
+            BundlePurchase.objects.create(
+                user=request.user,
+                bundle=bundle,
+                radiusdesk_user=radiusdesk_user,
+                transaction=transaction,
+                payment_method='crypto',
+                amount_paid=float(bundle.price),
+                status='failed'
+            )
+            return Response(
+                {"error": f"Payment successful but top-up failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+        except Exception as e:
+            logger.error(f"Error applying top-up: {str(e)}")
+            # Still create the purchase record as failed
+            BundlePurchase.objects.create(
+                user=request.user,
+                bundle=bundle,
+                radiusdesk_user=radiusdesk_user,
+                transaction=transaction,
+                payment_method='crypto',
+                amount_paid=float(bundle.price),
+                status='failed'
+            )
+            return Response(
+                {"error": f"Payment successful but top-up failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Create the BundlePurchase record
+        bundle_purchase = BundlePurchase.objects.create(
+            user=request.user,
+            bundle=bundle,
+            radiusdesk_user=radiusdesk_user,
+            transaction=transaction,
+            payment_method='crypto',
+            amount_paid=float(bundle.price),
+            status='success'
+        )
+
+        tx_receipt_dict = {
+            'transactionHash': tx_receipt.transactionHash.hex(),
+            'blockHash': tx_receipt.blockHash.hex(),
+            'blockNumber': tx_receipt.blockNumber,
+            'gasUsed': tx_receipt.gasUsed,
+            'status': tx_receipt.status,
+            'transactionIndex': tx_receipt.transactionIndex
+        }
+
+        return Response(
+            {
+                "bundle_purchase_id": bundle_purchase.id,
+                "bundle_name": bundle.name,
+                "amount_applied": bundle.data_gb if bundle.is_data_bundle else bundle.time_minutes,
+                "unit": "GB" if bundle.is_data_bundle else "minutes",
                 "transaction_receipt": tx_receipt_dict
             },
             status=status.HTTP_201_CREATED

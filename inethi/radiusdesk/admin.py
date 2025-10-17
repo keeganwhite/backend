@@ -5,7 +5,9 @@ from .models import (
     Realm,
     RadiusDeskProfile,
     Voucher,
-    RadiusDeskUser
+    RadiusDeskUser,
+    InternetBundle,
+    BundlePurchase
 )
 
 admin.site.register(RadiusDeskInstance)
@@ -14,3 +16,5 @@ admin.site.register(Realm)
 admin.site.register(RadiusDeskProfile)
 admin.site.register(Voucher)
 admin.site.register(RadiusDeskUser)
+admin.site.register(InternetBundle)
+admin.site.register(BundlePurchase)

@@ -13,7 +13,9 @@ from .models import (
     Realm,
     RadiusDeskProfile,
     Voucher,
-    RadiusDeskUser
+    RadiusDeskUser,
+    InternetBundle,
+    BundlePurchase
 )
 from .serializers import (
     RadiusDeskInstanceSerializer,
@@ -24,7 +26,9 @@ from .serializers import (
     VoucherSerializer,
     RadiusDeskUserSerializer,
     CreateRadiusDeskUserSerializer,
-    AddDataTopUpSerializer
+    AddDataTopUpSerializer,
+    InternetBundleSerializer,
+    BundlePurchaseSerializer
 )
 from utils.radiusdesk_client import RadiusDeskClientManager
 from radiusdesk_api.exceptions import APIError, AuthenticationError
@@ -1091,3 +1095,104 @@ class NetworkAdminVoucherViewSet(viewsets.ReadOnlyModelViewSet):
         user = self.request.user
         # Return vouchers only for instances where the user is an admin.
         return Voucher.objects.filter(radius_desk_instance__administrators=user).order_by('-created_at')
+
+
+class InternetBundleViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for managing Internet Bundles.
+    Regular users can list and retrieve bundles.
+    Network admins and superusers can create, update, and delete bundles.
+    """
+    serializer_class = InternetBundleSerializer
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+    queryset = InternetBundle.objects.all()
+
+    def get_queryset(self):
+        """
+        Filter bundles by radius_desk_instance query parameter if provided.
+        Only return active bundles for non-admin users.
+        """
+        queryset = InternetBundle.objects.all()
+        user = self.request.user
+
+        # Filter by radius_desk_instance if provided
+        radius_instance_id = self.request.query_params.get('radius_desk_instance')
+        if radius_instance_id:
+            queryset = queryset.filter(radius_desk_instance_id=radius_instance_id)
+
+        # Only show active bundles to regular users
+        if not user.is_superuser and not user.has_perm('core.network_admin'):
+            queryset = queryset.filter(is_active=True)
+
+        return queryset.order_by('-created_at')
+
+    def get_permissions(self):
+        """
+        Admin operations require superuser or network admin permissions.
+        """
+        if self.action in ['create', 'update', 'partial_update', 'destroy']:
+            return [IsSuperUserOrAPIKeyUserOrNetworkAdmin()]
+        return [IsAuthenticated()]
+
+    @action(detail=False, methods=['get'], url_path='my-bundles')
+    def my_bundles(self, request):
+        """
+        Get bundles for instances where the user has a permanent account.
+        """
+        # Get all RadiusDeskInstances where the user has a permanent account
+        user_instances = RadiusDeskUser.objects.filter(
+            user=request.user
+        ).values_list('radius_desk_instance', flat=True)
+
+        # Get active bundles for those instances
+        bundles = InternetBundle.objects.filter(
+            radius_desk_instance__in=user_instances,
+            is_active=True
+        ).order_by('radius_desk_instance', 'price')
+
+        serializer = self.get_serializer(bundles, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+
+class BundlePurchaseViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for viewing bundle purchase history.
+    Users can only see their own purchases.
+    Network admins can see purchases for their instances.
+    """
+    serializer_class = BundlePurchaseSerializer
+    authentication_classes = [KeycloakAuthentication]
+    permission_classes = [IsAuthenticated]
+    queryset = BundlePurchase.objects.all()
+
+    def get_queryset(self):
+        """
+        Filter purchases based on user permissions and query parameters.
+        Supports filtering by radius_desk_instance.
+        """
+        user = self.request.user
+
+        # Determine base queryset based on user permissions
+        if user.is_superuser:
+            queryset = BundlePurchase.objects.all()
+        # Network admins see purchases for their instances
+        elif user.has_perm('core.network_admin'):
+            admin_instances = RadiusDeskInstance.objects.filter(
+                administrators=user
+            )
+            queryset = BundlePurchase.objects.filter(
+                bundle__radius_desk_instance__in=admin_instances
+            )
+        # Regular users see only their own purchases
+        else:
+            queryset = BundlePurchase.objects.filter(user=user)
+
+        # Apply radius_desk_instance filter if provided
+        radius_instance_id = self.request.query_params.get('radius_desk_instance')
+        if radius_instance_id:
+            queryset = queryset.filter(
+                bundle__radius_desk_instance_id=radius_instance_id
+            )
+
+        return queryset.order_by('-purchase_date')

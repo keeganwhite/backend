@@ -11,7 +11,9 @@ from .views import (
     RadiusDeskProfileViewSet,
     VoucherViewSet,
     RadiusDeskUserViewSet,
-    NetworkAdminVoucherViewSet
+    NetworkAdminVoucherViewSet,
+    InternetBundleViewSet,
+    BundlePurchaseViewSet
 )
 
 app_name = 'radiusdesk'
@@ -29,6 +31,8 @@ router.register(
     NetworkAdminVoucherViewSet,
     basename='network-admin-vouchers'
 )
+router.register(r'internet-bundles', InternetBundleViewSet)
+router.register(r'bundle-purchases', BundlePurchaseViewSet)
 
 urlpatterns = [
     path('', include(router.urls)),
