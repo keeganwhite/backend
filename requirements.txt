@@ -88,7 +88,7 @@ python-keycloak==5.8.1
 pytz==2025.2
 pyunormalize==17.0.0
 PyYAML==6.0.3
-radiusdesk-api==0.2.0
+radiusdesk-api==0.3.0
 redis==6.4.0
 referencing==0.37.0
 regex==2025.9.18

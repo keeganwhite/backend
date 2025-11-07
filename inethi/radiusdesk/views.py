@@ -1096,6 +1096,92 @@ class RadiusDeskUserViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
+    @action(detail=False, methods=['get'], url_path='check-balance')
+    def check_balance(self, request):
+        """
+        Check the data balance of a permanent user in a RadiusDesk instance.
+        
+        Expects:
+          - radius_desk_instance_pk: Primary key of the RadiusDeskInstance
+          - username: Username of the permanent user (can be with or without realm suffix)
+        
+        Returns:
+          - username: The username checked
+          - balance_gb: Balance in gigabytes as a float
+          - radius_desk_instance: ID of the RadiusDesk instance
+        """
+        radius_desk_instance_pk = request.query_params.get('radius_desk_instance_pk')
+        username = request.query_params.get('username')
+
+        if not radius_desk_instance_pk:
+            return Response(
+                {"error": "radius_desk_instance_pk is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        if not username:
+            return Response(
+                {"error": "username is required"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            # Get the RadiusDesk instance
+            instance = RadiusDeskInstance.objects.get(pk=radius_desk_instance_pk)
+            
+            # Get the realm from the instance (assuming 1:1 relationship)
+            realm = instance.realms.first()
+            if not realm:
+                return Response(
+                    {"error": "No realm found for this RadiusDesk instance."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
+
+            # Get the RadiusDesk client
+            client = RadiusDeskClientManager.get_client(instance)
+
+            # Check the balance using the new check_balance method
+            # This method automatically handles realm lookup and converts to GB
+            balance_gb = client.users.check_balance(username)
+
+            logger.debug(
+                f"Checked balance for user {username} in instance {instance.name}: "
+                f"{balance_gb} GB"
+            )
+
+            return Response(
+                {
+                    "username": username,
+                    "balance_gb": balance_gb,
+                    "radius_desk_instance": instance.pk
+                },
+                status=status.HTTP_200_OK
+            )
+
+        except RadiusDeskInstance.DoesNotExist:
+            return Response(
+                {"error": "RadiusDesk instance not found."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        except AuthenticationError as e:
+            logger.error(f"Authentication error checking balance: {str(e)}")
+            return Response(
+                {"error": f"Authentication failed: {str(e)}"},
+                status=status.HTTP_401_UNAUTHORIZED
+            )
+        except APIError as e:
+            logger.error(f"API error checking balance: {str(e)}")
+            return Response(
+                {"error": f"RadiusDesk API error: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        except Exception as e:
+            logger.error(f"Error checking balance: {str(e)}")
+            return Response(
+                {"error": str(e)},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
 
 class NetworkAdminVoucherViewSet(viewsets.ReadOnlyModelViewSet):
     """
