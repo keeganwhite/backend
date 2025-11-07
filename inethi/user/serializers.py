@@ -57,7 +57,7 @@ class UserSerializer(serializers.ModelSerializer):
 
     def validate_email(self, value):
         if not value or value.strip() == "":
-            logger.info("No email provided, will generate default email.")
+            logger.debug("No email provided, will generate default email.")
             return None
         return value
 
@@ -65,12 +65,12 @@ class UserSerializer(serializers.ModelSerializer):
         email = validated_data.get("email")
         username = validated_data.get("username")
         validated_data["email"] = email or f"{username}@inethi.com"
-        logger.info(
+        logger.debug(
             f"Creating user: {username} with email: {validated_data['email']}"
         )
         try:
             user = get_user_model().objects.create_user(**validated_data)
-            logger.info(f"User created successfully: {user}")
+            logger.debug(f"User created successfully: {user}")
             return user
         except Exception as e:
             logger.error(f"User creation failed: {e}")
@@ -79,12 +79,12 @@ class UserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Update a user with encrypted password"""
         password = validated_data.pop('password', None)
-        logger.info(f"Updating user: {instance} with data: {validated_data}")
+        logger.debug(f"Updating user: {instance} with data: {validated_data}")
         user = super().update(instance, validated_data)
         if password:
             user.set_password(password)
             user.save()
-            logger.info(f"Password updated for user: {user}")
+            logger.debug(f"Password updated for user: {user}")
         return user
 
 
@@ -128,7 +128,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
 
             if email and password:
                 # Handle email/password authentication with Keycloak
-                logger.info(f"Authenticating user {email} with Keycloak.")
+                logger.debug(f"Authenticating user {email} with Keycloak.")
                 token_response = keycloak_openid.token(
                     username=email,
                     password=password
@@ -161,7 +161,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
                 attrs['expires_in'] = expires_in
                 attrs['user'] = user
                 attrs['token'] = token
-                logger.info(f"Token validated for user: {user}")
+                logger.debug(f"Token validated for user: {user}")
                 return attrs
 
             else:
@@ -203,7 +203,7 @@ class KeycloakAuthTokenSerializer(serializers.Serializer):
             refreshed_token_response = keycloak_openid.refresh_token(
                 refresh_token
             )
-            logger.info("Token refreshed successfully.")
+            logger.debug("Token refreshed successfully.")
             return {
                 'access_token': refreshed_token_response.get('access_token'),
                 'refresh_token': refreshed_token_response.get('refresh_token'),
@@ -278,12 +278,12 @@ class AdminUserSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         """Update user with encrypted password and all fields"""
         password = validated_data.pop('password', None)
-        logger.info(
+        logger.debug(
             f"Admin updating user: {instance} with data: {validated_data}"
         )
         user = super().update(instance, validated_data)
         if password:
             user.set_password(password)
             user.save()
-            logger.info(f"Password updated for user: {user}")
+            logger.debug(f"Password updated for user: {user}")
         return user

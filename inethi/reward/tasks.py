@@ -20,7 +20,7 @@ def process_reward(reward_id):
     """
     try:
         reward = Reward.objects.get(id=reward_id)
-        logger.info(
+        logger.debug(
             f"Processing reward {reward_id}: user {reward.user}, device {reward.device}"
         )
 
@@ -41,14 +41,14 @@ def process_reward(reward_id):
         uptime_percentage, total_pings, expected_pings = calculate_uptime_percentage(
             reward.device.id, lookback_period
         )
-        logger.info(
+        logger.debug(
             f"Calculated uptime for device {reward.device.id}: {uptime_percentage}% "
             f"over {expected_pings} expected pings."
         )
 
         # Calculate the awarded amount based on uptime percentage
         awarded_amount = float(uptime_percentage) * float(reward.reward_amount) / 100.0
-        logger.info(f"Awarded amount for reward {reward_id}: {awarded_amount}")
+        logger.debug(f"Awarded amount for reward {reward_id}: {awarded_amount}")
 
         # --- Blockchain payout ---
         # Get network admin (owner) and device owner wallets
@@ -106,7 +106,7 @@ def process_reward(reward_id):
                         )
                 ):
                     tx_hash = tx_receipt['transactionHash'].hex()
-                logger.info(
+                logger.debug(
                     f"Blockchain transaction created for reward {reward_id}: "
                     f"tx_hash={tx_hash}"
                 )
@@ -114,7 +114,7 @@ def process_reward(reward_id):
                 logger.error(f"Blockchain transfer failed for reward {reward_id}: {e}")
                 return
         else:
-            logger.info(
+            logger.debug(
                 f"No tokens sent for reward {reward_id} as awarded_amount is 0. "
                 f"Recording reward transaction only."
             )
@@ -154,7 +154,7 @@ def process_reward(reward_id):
             uptime_seconds=interval_minutes * 60,
             percentage_awarded=uptime_percentage
         )
-        logger.info(
+        logger.debug(
             f"Successfully processed reward {reward.id} for device {reward.device.id} "
             f"with {awarded_amount} tokens sent."
         )

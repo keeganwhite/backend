@@ -21,6 +21,7 @@ services:
       - DB_NAME=${DB_NAME:-devdb}
       - DB_USER=${DB_USER:-devuser}
       - DB_PASS=${DB_PASS:-devpass}
+      - LOG_LEVEL=INFO
     depends_on:
       - db
     labels:

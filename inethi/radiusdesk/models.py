@@ -53,6 +53,16 @@ class Realm(models.Model):
 
 
 class RadiusDeskProfile(models.Model):
+    """
+    RadiusDesk profile that defines connection parameters and limits.
+    Can be used for vouchers or permanent user accounts.
+    """
+    PAYMENT_METHOD_CHOICES = [
+        ('crypto', 'Cryptocurrency'),
+        ('1foryou', '1FourYou'),
+        ('other', 'Other'),
+    ]
+
     name = models.CharField(max_length=255)
     realm = models.ForeignKey(
         Realm,
@@ -78,6 +88,16 @@ class RadiusDeskProfile(models.Model):
     limit_session_enabled = models.BooleanField(default=False)
     session_limit = models.IntegerField(default=0)
     cost = models.FloatField(default=0)
+    payment_method = models.CharField(
+        max_length=20,
+        choices=PAYMENT_METHOD_CHOICES,
+        default='crypto',
+        help_text="Payment method accepted for this profile"
+    )
+    is_permanent_user_registration = models.BooleanField(
+        default=False,
+        help_text="If True, this profile is used internally for permanent user registration and should not be returned in profile query endpoints"
+    )
 
     def __str__(self):
         return self.name
@@ -177,7 +197,7 @@ class InternetBundle(models.Model):
     """
     PAYMENT_METHOD_CHOICES = [
         ('crypto', 'Cryptocurrency'),
-        ('one4you', 'One4You'),
+        ('1foryou', '1FourYou'),
         ('other', 'Other'),
     ]
 

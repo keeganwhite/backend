@@ -166,3 +166,9 @@ cython_debug/
 *.db
 *.sql
 radiusdesk/radiusdesk-docker-main/*
+
+1foryou/
+rdapi-docs/
+AGENTS.md
+OCS_MOBILE_API_DOCUMENTATION.md
+quick_test_oneforyou.sh

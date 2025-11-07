@@ -296,6 +296,25 @@ class Transaction(models.Model):
         null=True,
         blank=True
     )
+    oneforyou_reference = models.CharField(
+        max_length=256,
+        null=True,
+        blank=True,
+        help_text="1FourYou transaction reference for querying"
+    )
+    change_voucher_pin = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        help_text="Change voucher PIN if partial redemption"
+    )
+    change_voucher_amount = models.DecimalField(
+        max_digits=18,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="Change voucher amount in ZAR"
+    )
 
     def __str__(self):
         return f"Transaction from {self.sender} to {self.recipient_address}"

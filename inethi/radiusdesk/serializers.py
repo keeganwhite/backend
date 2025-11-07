@@ -10,7 +10,6 @@ from .models import (
     BundlePurchase
 )
 
-
 class RadiusDeskInstanceSerializer(serializers.ModelSerializer):
     class Meta:
         model = RadiusDeskInstance
@@ -49,9 +48,11 @@ class RealmSerializer(serializers.ModelSerializer):
 
 
 class RadiusDeskProfileSerializer(serializers.ModelSerializer):
+    """Serializer for RadiusDeskProfile model."""
     class Meta:
         model = RadiusDeskProfile
         fields = '__all__'
+        # payment_method is now included automatically via '__all__'
 
 
 class VoucherSerializer(serializers.ModelSerializer):
@@ -64,6 +65,7 @@ class VoucherSerializer(serializers.ModelSerializer):
     profile_speed_limit_mbs = serializers.SerializerMethodField()
     profile_speed_limit_enabled = serializers.SerializerMethodField()
     profile_cost = serializers.SerializerMethodField()
+    profile_payment_method = serializers.SerializerMethodField()
 
     def get_profile_name(self, obj):
         """Get the profile name for this voucher."""
@@ -88,6 +90,10 @@ class VoucherSerializer(serializers.ModelSerializer):
     def get_profile_cost(self, obj):
         """Get the profile cost."""
         return obj.profile.cost if obj.profile else None
+
+    def get_profile_payment_method(self, obj):
+        """Get the profile payment method."""
+        return obj.profile.payment_method if obj.profile else None
 
     class Meta:
         model = Voucher
@@ -135,7 +141,8 @@ class CreateRadiusDeskUserSerializer(serializers.Serializer):
         help_text="Primary key of the RadiusDesk instance"
     )
     profile_pk = serializers.IntegerField(
-        help_text="Primary key of the RadiusDesk profile to assign"
+        help_text="Primary key of the RadiusDesk profile to assign (optional, ignored - uses profile with is_permanent_user_registration=True)",
+        required=False
     )
     username = serializers.CharField(
         max_length=255,
@@ -257,3 +264,40 @@ class PurchaseBundleSerializer(serializers.Serializer):
     bundle_id = serializers.IntegerField(
         help_text="ID of the InternetBundle to purchase"
     )
+    oneforyou_pin = serializers.CharField(
+        required=False, 
+        allow_blank=True,
+        help_text="1FourYou voucher PIN (required for 1foryou payment method)"
+    )
+    phone_number = serializers.CharField(
+        required=False, 
+        allow_blank=True,
+        help_text="Customer phone number (required for 1foryou payment method)"
+    )
+    
+    def validate(self, data):
+        """Validate that 1FourYou fields are provided when needed."""
+        bundle_id = data.get('bundle_id')
+        oneforyou_pin = data.get('oneforyou_pin')
+        phone_number = data.get('phone_number')
+        
+        if bundle_id:
+            try:
+                
+                bundle = InternetBundle.objects.get(pk=bundle_id)
+                
+                # If payment method is 1foryou, require PIN and phone number
+                if bundle.payment_method == '1foryou':
+                    if not oneforyou_pin:
+                        raise serializers.ValidationError({
+                            'oneforyou_pin': '1FourYou PIN is required for 1foryou payment method.'
+                        })
+                    if not phone_number:
+                        raise serializers.ValidationError({
+                            'phone_number': 'Phone number is required for 1foryou payment method.'
+                        })
+                        
+            except InternetBundle.DoesNotExist:
+                pass  # Will be caught by other validation
+        
+        return data

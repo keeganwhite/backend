@@ -60,7 +60,8 @@ INSTALLED_APPS = [
     'radiusdesk',
     'network',
     'api_key',
-    'reward'
+    'reward',
+    'ocs'
 ]
 
 MIDDLEWARE = [
@@ -178,6 +179,17 @@ KEYCLOAK_CONNECTION = KeycloakOpenIDConnection(
 
 KEYCLOAK_ADMIN = KeycloakAdmin(connection=KEYCLOAK_CONNECTION)
 
+# 1FourYou Payment config (v4 API)
+# Environment: "sandbox" or "production" (default: "sandbox")
+ONEFORYOU_ENVIRONMENT = env("ONEFORYOU_ENVIRONMENT", default="sandbox")
+# API key is base64-encoded (as provided by Flash Integrations)
+ONEFORYOU_API_KEY = env("ONEFORYOU_API_KEY", default=None)
+# Legacy support for old consumer_key:consumer_secret format (will be converted to API key)
+ONEFORYOU_CONSUMER_KEY = env("ONEFORYOU_CONSUMER_KEY", default=None)
+ONEFORYOU_CONSUMER_SECRET = env("ONEFORYOU_CONSUMER_SECRET", default=None)
+ONEFORYOU_USER_ID = env("ONEFORYOU_USER_ID", default="XXXX")
+ONEFORYOU_ACCOUNT_NUMBER = env("ONEFORYOU_ACCOUNT_NUMBER", default="XXXX")
+
 # Krone config
 krone_abi_fp = os.path.join(BASE_DIR, "contracts/krone_contract_abi.json")
 with open(krone_abi_fp, "r", encoding="utf-8") as abi_file:
@@ -194,6 +206,9 @@ SPECTACULAR_SETTINGS = {
     'SERVE_INCLUDE_SCHEMA': False,
     'COMPONENT_SPLIT_REQUEST': True,
 }
+
+# OCS defaults
+OCS_DEFAULT_PRODUCT_OFFERING = 'prepaid-data-user'
 
 # Smart contracts
 FAUCET_ABI_FILE_PATH = os.path.join(BASE_DIR, "contracts/faucet_abi.json")
@@ -215,6 +230,9 @@ log_dir = '/tmp' if os.environ.get('CI') else BASE_DIR
 # Use env for CI detection
 CI = env.bool('CI', default=False)
 
+# Get log level from environment variable (default to INFO)
+LOG_LEVEL = env('LOG_LEVEL', default='INFO').upper()
+
 LOGGING = {
     'version': 1,
     'disable_existing_loggers': False,
@@ -232,12 +250,12 @@ LOGGING = {
         'console': {
             'class': 'logging.StreamHandler',
             'formatter': 'verbose',
-            'level': 'INFO',
+            'level': LOG_LEVEL,
         },
     },
     'root': {
         'handlers': ['console'],
-        'level': 'INFO',
+        'level': LOG_LEVEL,
     },
     'loggers': {
         'django': {
@@ -247,17 +265,17 @@ LOGGING = {
         },
         'wallet': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': LOG_LEVEL,
             'propagate': False,
         },
         'utils.crypto': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': LOG_LEVEL,
             'propagate': False,
         },
         'reward': {
             'handlers': ['console'],
-            'level': 'INFO',
+            'level': LOG_LEVEL,
             'propagate': False,
         },
     },
@@ -279,7 +297,7 @@ if not CI:
             'maxBytes': 1024 * 1024 * 50,  # 50MB
             'backupCount': 5,
             'formatter': 'verbose',
-            'level': 'INFO',
+            'level': LOG_LEVEL,
         },
         'rewards_file': {
             'class': 'logging.handlers.RotatingFileHandler',
@@ -287,7 +305,7 @@ if not CI:
             'maxBytes': 1024 * 1024 * 50,  # 50MB
             'backupCount': 15,
             'formatter': 'verbose',
-            'level': 'INFO',
+            'level': LOG_LEVEL,
         },
     })
     LOGGING['root']['handlers'] = ['console', 'file']

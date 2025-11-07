@@ -85,14 +85,14 @@ class CryptoUtils:
 
     def create_wallet(self) -> dict:
         """Create a wallet on the blockchain."""
-        logger.info("Starting wallet creation process")
+        logger.debug("Starting wallet creation process")
         try:
             account = self.w3.eth.account.create()
             result = {
                 'private_key': account._private_key.hex(),
                 'address': account.address
             }
-            logger.info(f"Wallet created: {result}")
+            logger.debug(f"Wallet created: {result}")
             return result
         except Exception as e:
             logger.error(f"Error in create_wallet: {e}")
@@ -153,7 +153,7 @@ class CryptoUtils:
         token_amount = int(amount * (10**decimals))
 
         attempt = 0
-        logger.info(f"send_to_wallet_address: {to_address} from {from_address} for {amount}")
+        logger.debug(f"send_to_wallet_address: {to_address} from {from_address} for {amount}")
 
         while attempt < max_retries:
             try:
@@ -166,7 +166,7 @@ class CryptoUtils:
                 )
                 gas_price = self.w3.eth.gas_price
 
-                logger.info(
+                logger.debug(
                     f"transfering to {to_address} from {from_address} for {token_amount} "
                     f"with gas {gas} and gas_price {gas_price}"
                 )
@@ -230,7 +230,7 @@ class CryptoUtils:
         account = self.w3.eth.account.from_key(private_key)
         sender_address = account.address
         attempt = 0
-        logger.info(f"faucet_give_to: {give_to_address} with nonce {nonce}")
+        logger.debug(f"faucet_give_to: {give_to_address} with nonce {nonce}")
 
         while attempt < max_retries:
             try:
@@ -434,7 +434,7 @@ class CryptoUtils:
                     'from': Web3.to_checksum_address(sender_address)
                 })
 
-                logger.info(
+                logger.debug(
                     f"registry_add: {address_to_add}, gas {gas_estimate}"
                 )
 

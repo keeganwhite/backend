@@ -46,17 +46,17 @@ class RewardViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        logger.info(f"Fetching rewards for user {user}")
+        logger.debug(f"Fetching rewards for user {user}")
         if user.is_superuser or not user.has_perm('core.network_admin'):
             return Reward.objects.all()
-        logger.info(
+        logger.debug(
             f"User {user} is network admin, filtering rewards by their networks"
         )
         return Reward.objects.filter(network__admin=user)
 
     @action(detail=False, methods=['post'])
     def setup(self, request):
-        logger.info(f"Reward setup requested by user {request.user}")
+        logger.debug(f"Reward setup requested by user {request.user}")
         if (request.user.has_perm('core.network_admin') and
                 not request.user.is_superuser):
             network_id = request.data.get('network')
@@ -69,7 +69,7 @@ class RewardViewSet(viewsets.ModelViewSet):
                         device = Host.objects.get(id=device_id)
                         if device.network:
                             network_id = device.network.id
-                            logger.info(
+                            logger.debug(
                                 f"Inferred network {network_id} from device {device_id}"
                             )
                             request.data['network'] = network_id
@@ -113,7 +113,7 @@ class RewardViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(data=request.data)
         if serializer.is_valid():
             reward = serializer.save()
-            logger.info(f"Reward {reward.id} created by user {request.user}")
+            logger.debug(f"Reward {reward.id} created by user {request.user}")
             if reward.once_off:
                 task = process_reward.delay(reward.id)
                 reward.celery_task_id = task.id
@@ -131,7 +131,7 @@ class RewardViewSet(viewsets.ModelViewSet):
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def update(self, request, pk=None):
-        logger.info(f"Reward update requested for id {pk} by user {request.user}")
+        logger.debug(f"Reward update requested for id {pk} by user {request.user}")
         reward = self.get_object()
         old_task_id = reward.celery_task_id
         serializer = self.get_serializer(
@@ -159,13 +159,13 @@ class RewardViewSet(viewsets.ModelViewSet):
                 updated_reward.celery_task_id = task_id
                 updated_reward.is_canceled = False
                 updated_reward.save()
-            logger.info(f"Reward {pk} updated by user {request.user}")
+            logger.debug(f"Reward {pk} updated by user {request.user}")
             return Response(serializer.data, status=status.HTTP_200_OK)
         logger.error(f"Reward update failed for id {pk}: {serializer.errors}")
         return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
     def destroy(self, request, pk=None):
-        logger.info(f"Reward destroy requested for id {pk} by user {request.user}")
+        logger.debug(f"Reward destroy requested for id {pk} by user {request.user}")
         try:
             reward = self.get_object()
             if reward.once_off and reward.celery_task_id:
@@ -184,7 +184,7 @@ class RewardViewSet(viewsets.ModelViewSet):
                 except Exception as e:
                     logger.warning(f"Could not delete periodic task: {e}")
             reward.delete()
-            logger.info(f"Reward {pk} deleted by user {request.user}")
+            logger.debug(f"Reward {pk} deleted by user {request.user}")
             return Response(
                 {'message': 'Reward canceled and deleted successfully.'},
                 status=status.HTTP_204_NO_CONTENT
@@ -198,11 +198,11 @@ class RewardViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def activate(self, request, pk=None):
-        logger.info(f"Reward activate requested for id {pk} by user {request.user}")
+        logger.debug(f"Reward activate requested for id {pk} by user {request.user}")
         try:
             reward = self.get_object()
             if not reward.is_cancelled:
-                logger.info(f"Reward {pk} is already active.")
+                logger.debug(f"Reward {pk} is already active.")
                 return Response(
                     {'message': 'Reward is already active.'},
                     status=status.HTTP_400_BAD_REQUEST
@@ -219,7 +219,7 @@ class RewardViewSet(viewsets.ModelViewSet):
                 )
                 reward.celery_task_id = task_id
             reward.save()
-            logger.info(f"Reward {pk} activated by user {request.user}")
+            logger.debug(f"Reward {pk} activated by user {request.user}")
             return Response({
                 'message': 'Reward activated successfully.'},
                 status=status.HTTP_200_OK
@@ -239,7 +239,7 @@ class RewardViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['post'])
     def cancel(self, request, pk=None):
-        logger.info(f"Reward cancel requested for id {pk} by user {request.user}")
+        logger.debug(f"Reward cancel requested for id {pk} by user {request.user}")
         try:
             reward = self.get_object()
             if reward.once_off and reward.celery_task_id:
@@ -264,7 +264,7 @@ class RewardViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST
                     )
             reward.cancel()
-            logger.info(f"Reward {pk} cancelled by user {request.user}")
+            logger.debug(f"Reward {pk} cancelled by user {request.user}")
             return Response(
                 {'message': 'Reward cancelled successfully.'},
                 status=status.HTTP_200_OK

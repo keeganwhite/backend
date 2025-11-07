@@ -1,6 +1,7 @@
 from rest_framework import viewsets, permissions, status
 from rest_framework.response import Response
 from rest_framework.decorators import action
+from decimal import Decimal
 
 import utils.crypto
 from core.models import Wallet, User, Transaction
@@ -12,6 +13,29 @@ from django.conf import settings
 import logging
 from utils.crypto import decrypt_private_key
 from utils.radiusdesk_client import RadiusDeskClientManager
+from utils.oneforyou_client import OneForYouClient
+
+logger = logging.getLogger(__name__)
+
+
+def normalize_oneforyou_pin(pin):
+    """
+    Normalize 1FourYou PIN by removing spaces, hyphens, and other formatting.
+    
+    Args:
+        pin (str): The PIN in any format (e.g., "1206 35846491 0847" or "1206-35846491-0847")
+        
+    Returns:
+        str: Normalized PIN with only digits (e.g., "1206358464910847")
+    """
+    if not pin:
+        return pin
+    # Remove spaces, hyphens, and any other non-digit characters
+    normalized = ''.join(char for char in str(pin) if char.isdigit())
+    return normalized
+
+# Create a single instance of OneForYouClient to reuse across requests
+oneforyou_client = OneForYouClient()
 from radiusdesk_api.exceptions import APIError, AuthenticationError
 from radiusdesk.models import (
     RadiusDeskInstance,
@@ -22,6 +46,9 @@ from radiusdesk.models import (
     RadiusDeskUser
 )
 from radiusdesk.serializers import PurchaseBundleSerializer
+from ocs.models import DataBundle, DataPurchase, OCSSubscriber
+from ocs.serializers import PurchaseDataBundleSerializer
+from utils.ocs_client import OCSAPIClient
 
 logger = logging.getLogger(__name__)
 
@@ -498,11 +525,13 @@ class WalletViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['post'], url_path='purchase-voucher')
     def purchase_voucher(self, request):
         """
-        Purchase a voucher by taking a crypto payment.
+        Purchase a voucher by taking a crypto or 1foryou payment.
 
         Expects:
           - radius_desk_instance_pk: PK of the RadiusDeskInstance.
           - voucher_profile_pk: PK of the Voucher Profile (RadiusDeskProfile).
+          - oneforyou_pin (optional): 1FourYou voucher PIN (required for 1foryou payment method).
+          - phone_number (optional): Customer phone number (required for 1foryou payment method).
         """
         wallet_exists = Wallet.objects.filter(user=request.user).exists()
         if not wallet_exists:
@@ -511,8 +540,11 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
         wallet = Wallet.objects.filter(user=request.user).first()
-        logger.info(f"request.radius_desk_instance_pk: {request.data.get('radius_desk_instance_pk')}")
-        logger.info(f"request.voucher_profile_pk: {request.data.get('voucher_profile_pk')}")
+        logger.debug(f"request.radius_desk_instance_pk: {request.data.get('radius_desk_instance_pk')}")
+        logger.debug(f"request.voucher_profile_pk: {request.data.get('voucher_profile_pk')}")
+        logger.debug(f"request.oneforyou_pin: {request.data.get('oneforyou_pin')}")
+        logger.debug(f"request.phone_number: {request.data.get('phone_number')}")
+        
         # Validate input
         radius_desk_instance_pk = request.data.get('radius_desk_instance_pk')
         voucher_profile_pk = request.data.get('voucher_profile_pk')
@@ -520,7 +552,7 @@ class WalletViewSet(viewsets.ModelViewSet):
         if not radius_desk_instance_pk or not voucher_profile_pk:
             return Response(
                 {
-                    "error": "radius instancee, voucher, amount required."
+                    "error": "radius_desk_instance_pk and voucher_profile_pk are required."
                 },
                 status=status.HTTP_400_BAD_REQUEST
             )
@@ -543,6 +575,153 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_404_NOT_FOUND
             )
 
+        # Determine the cost of the voucher
+        cost = voucher_profile.cost
+        if cost <= 0:
+            return Response(
+                {"error": "Invalid voucher cost."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check payment method
+        if voucher_profile.payment_method == 'other':
+            return Response(
+                {"error": "This payment method is not supported."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        elif voucher_profile.payment_method == '1foryou':
+            # 1FourYou payment flow
+            oneforyou_pin_raw = request.data.get('oneforyou_pin')
+            phone_number = request.data.get('phone_number')
+            
+            if not oneforyou_pin_raw or not phone_number:
+                return Response(
+                    {"error": "1FourYou PIN and phone number are required for 1foryou payment method."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Normalize PIN by removing spaces, hyphens, etc.
+            oneforyou_pin = normalize_oneforyou_pin(oneforyou_pin_raw)
+            logger.debug(f"Normalized 1FourYou PIN: '{oneforyou_pin_raw}' -> '{oneforyou_pin}'")
+            
+            # Convert voucher cost to cents
+            amount_cents = int(cost * 100)
+            
+            try:
+                # Redeem 1FourYou voucher using the shared client instance
+                redemption_response = oneforyou_client.redeem_voucher(
+                    voucher_pin=oneforyou_pin,
+                    amount_cents=amount_cents,
+                    phone_number=phone_number
+                )
+                
+                logger.debug(f"1FourYou redemption successful for user {request.user.username}: {redemption_response}")
+                
+                # Extract reference and change voucher from response
+                reference = redemption_response.get("reference", "")
+                voucher_obj = redemption_response.get("voucher", {})
+                
+                # Extract change voucher details if present
+                change_voucher_pin = None
+                change_voucher_amount = None
+                if voucher_obj:
+                    change_voucher_pin = voucher_obj.get("pin")
+                    change_voucher_amount_cents = voucher_obj.get("amount", 0)
+                    # Convert cents to ZAR (divide by 100)
+                    if change_voucher_amount_cents:
+                        change_voucher_amount = Decimal(str(change_voucher_amount_cents)) / 100
+                
+                # Get the RadiusDesk client and generate a voucher code
+                try:
+                    client = RadiusDeskClientManager.get_client(instance)
+
+                    voucher_response = client.vouchers.create(
+                        realm_id=voucher_profile.realm.radius_desk_id,
+                        profile_id=voucher_profile.radius_desk_id,
+                        quantity=1
+                    )
+
+                    # Extract voucher code from response (single voucher returns dict)
+                    voucher_code = voucher_response['name']
+
+                except AuthenticationError as e:
+                    logger.error(f"Authentication error creating voucher: {str(e)}")
+                    return Response(
+                        {"error": f"Authentication failed: {str(e)}"},
+                        status=status.HTTP_401_UNAUTHORIZED
+                    )
+                except APIError as e:
+                    logger.error(f"API error creating voucher: {str(e)}")
+                    return Response(
+                        {"error": f"RadiusDesk API error: {str(e)}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                except Exception as e:
+                    logger.error(f"Failed to create voucher code: {str(e)}")
+                    return Response(
+                        {"error": f"Failed to create voucher code: {str(e)}"},
+                        status=status.HTTP_400_BAD_REQUEST
+                    )
+                
+                # Record the voucher in the database
+                Voucher.objects.create(
+                    voucher_code=voucher_code,
+                    realm=voucher_profile.realm,
+                    cloud=voucher_profile.cloud,
+                    radius_desk_instance=instance,
+                    profile=voucher_profile,
+                    user=request.user
+                )
+                
+                # Create transaction record for 1FourYou payment
+                # Store the original (raw) PIN in sender_address for reference
+                transaction = Transaction.objects.create(
+                    sender=request.user,
+                    recipient_address="1FourYou",
+                    sender_address=oneforyou_pin_raw,  # Store original format for reference
+                    amount=Decimal(str(cost)),
+                    category="INTERNET_COUPON",
+                    token="ZAR",
+                    oneforyou_reference=reference,
+                    change_voucher_pin=change_voucher_pin,
+                    change_voucher_amount=change_voucher_amount,
+                )
+                
+                # Prepare response with change voucher info if present
+                response_data = {
+                    "voucher": voucher_code,
+                    "payment_method": "1foryou",
+                    "amount_paid": cost,
+                    "transaction_reference": reference
+                }
+                
+                # Check if there's a change voucher in the response (v4 format)
+                if voucher_obj and change_voucher_pin:
+                    response_data["change_voucher"] = {
+                        "pin": change_voucher_pin,
+                        "amount": float(change_voucher_amount) if change_voucher_amount else None,
+                        "expiry_date": voucher_obj.get("expiryDate"),
+                        "serial_number": voucher_obj.get("serialNumber"),
+                        "status": voucher_obj.get("status"),
+                        "message": "Please save this voucher PIN for future use"
+                    }
+
+                return Response(response_data, status=status.HTTP_201_CREATED)
+                
+            except Exception as e:
+                logger.error(f"1FourYou redemption failed for user {request.user.username}: {str(e)}")
+                return Response(
+                    {"error": f"1FourYou payment failed: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        elif voucher_profile.payment_method != 'crypto':
+            return Response(
+                {"error": "Invalid payment method."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crypto payment flow
         # Check that the instance accepts crypto payments
         if not instance.accepts_crypto:
             return Response(
@@ -562,15 +741,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Determine the cost of the voucher
-        cost = voucher_profile.cost
-        if cost <= 0:
-            return Response(
-                {"error": "Invalid voucher cost."},
-                status=status.HTTP_400_BAD_REQUEST
-            )
-
-        # Decrypt the admin wallet's private key
+        # Decrypt the user's private key
         try:
             decrypted_private_key = decrypt_private_key(wallet.private_key)
         except Exception:
@@ -739,11 +910,170 @@ class WalletViewSet(viewsets.ModelViewSet):
                 {"error": "This payment method is not supported."},
                 status=status.HTTP_400_BAD_REQUEST
             )
-        elif bundle.payment_method == 'one4you':
-            return Response(
-                {"error": "One4You payment method is not yet implemented."},
-                status=status.HTTP_501_NOT_IMPLEMENTED
-            )
+        elif bundle.payment_method == '1foryou':
+            # 1FourYou payment flow
+            oneforyou_pin_raw = serializer.validated_data.get('oneforyou_pin')
+            phone_number = serializer.validated_data.get('phone_number')
+            
+            if not oneforyou_pin_raw or not phone_number:
+                return Response(
+                    {"error": "1FourYou PIN and phone number are required for 1foryou payment method."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Normalize PIN by removing spaces, hyphens, etc.
+            oneforyou_pin = normalize_oneforyou_pin(oneforyou_pin_raw)
+            logger.debug(f"Normalized 1FourYou PIN: '{oneforyou_pin_raw}' -> '{oneforyou_pin}'")
+            
+            # Convert bundle price to cents
+            amount_cents = int(bundle.price * 100)
+            
+            try:
+                # Redeem 1FourYou voucher using the shared client instance
+                redemption_response = oneforyou_client.redeem_voucher(
+                    voucher_pin=oneforyou_pin,
+                    amount_cents=amount_cents,
+                    phone_number=phone_number
+                )
+                
+                logger.debug(f"1FourYou redemption successful for user {request.user.username}: {redemption_response}")
+                
+                # Extract reference and change voucher from response
+                reference = redemption_response.get("reference", "")
+                voucher_obj = redemption_response.get("voucher", {})
+                
+                # Extract change voucher details if present
+                change_voucher_pin = None
+                change_voucher_amount = None
+                if voucher_obj:
+                    change_voucher_pin = voucher_obj.get("pin")
+                    change_voucher_amount_cents = voucher_obj.get("amount", 0)
+                    # Convert cents to ZAR (divide by 100)
+                    if change_voucher_amount_cents:
+                        change_voucher_amount = Decimal(str(change_voucher_amount_cents)) / 100
+                
+                # Create transaction record for 1FourYou payment
+                # Store the original (raw) PIN in sender_address for reference
+                transaction = Transaction.objects.create(
+                    sender=request.user,
+                    recipient_address="1FourYou",
+                    sender_address=oneforyou_pin_raw,  # Store original format for reference
+                    amount=Decimal(str(bundle.price)),
+                    category="INTERNET_COUPON",
+                    token="ZAR",
+                    oneforyou_reference=reference,
+                    change_voucher_pin=change_voucher_pin,
+                    change_voucher_amount=change_voucher_amount,
+                )
+                
+                # Apply the top-up via RadiusDesk API
+                try:
+                    client = RadiusDeskClientManager.get_client(instance)
+
+                    if bundle.is_data_bundle:
+                        # Apply data top-up
+                        top_up_response = client.users.add_data(
+                            user_id=radiusdesk_user.radiusdesk_id,
+                            amount=int(bundle.data_gb),
+                            unit='gb',
+                            comment=f"Bundle purchase: {bundle.name}"
+                        )
+                        logger.debug(
+                            f"Applied data top-up for user {request.user.username}: "
+                            f"{top_up_response}"
+                        )
+                    else:
+                        # Apply time top-up
+                        top_up_response = client.users.add_time(
+                            user_id=radiusdesk_user.radiusdesk_id,
+                            amount=bundle.time_minutes,
+                            unit='minutes',
+                            comment=f"Bundle purchase: {bundle.name}"
+                        )
+                        logger.debug(
+                            f"Applied time top-up for user {request.user.username}: "
+                            f"{top_up_response}"
+                        )
+
+                except AuthenticationError as e:
+                    logger.error(f"Authentication error applying top-up: {str(e)}")
+                    # Still create the purchase record as failed
+                    BundlePurchase.objects.create(
+                        user=request.user,
+                        bundle=bundle,
+                        radiusdesk_user=radiusdesk_user,
+                        transaction=transaction,
+                        payment_method='1foryou',
+                        amount_paid=float(bundle.price),
+                        status='failed'
+                    )
+                    return Response(
+                        {"error": f"Payment successful but top-up failed: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+                except APIError as e:
+                    logger.error(f"API error applying top-up: {str(e)}")
+                    # Still create the purchase record as failed
+                    BundlePurchase.objects.create(
+                        user=request.user,
+                        bundle=bundle,
+                        radiusdesk_user=radiusdesk_user,
+                        transaction=transaction,
+                        payment_method='1foryou',
+                        amount_paid=float(bundle.price),
+                        status='failed'
+                    )
+                    return Response(
+                        {"error": f"Payment successful but top-up failed: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+                # Create successful purchase record
+                BundlePurchase.objects.create(
+                    user=request.user,
+                    bundle=bundle,
+                    radiusdesk_user=radiusdesk_user,
+                    transaction=transaction,
+                    payment_method='1foryou',
+                    amount_paid=float(bundle.price),
+                    status='success'
+                )
+
+                # Prepare response with change voucher info if present
+                response_data = {
+                    "success": True,
+                    "message": f"Successfully purchased {bundle.name} using 1FourYou payment",
+                    "bundle": {
+                        "name": bundle.name,
+                        "type": "data" if bundle.is_data_bundle else "time",
+                        "amount": bundle.data_gb if bundle.is_data_bundle else bundle.time_minutes,
+                        "unit": "GB" if bundle.is_data_bundle else "minutes"
+                    },
+                    "payment_method": "1foryou",
+                    "amount_paid": bundle.price,
+                    "transaction_reference": reference
+                }
+                
+                # Check if there's a change voucher in the response (v4 format)
+                if voucher_obj and change_voucher_pin:
+                    response_data["change_voucher"] = {
+                        "pin": change_voucher_pin,
+                        "amount": float(change_voucher_amount) if change_voucher_amount else None,
+                        "expiry_date": voucher_obj.get("expiryDate"),
+                        "serial_number": voucher_obj.get("serialNumber"),
+                        "status": voucher_obj.get("status"),
+                        "message": "Please save this voucher PIN for future use"
+                    }
+
+                return Response(response_data, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                logger.error(f"1FourYou redemption failed for user {request.user.username}: {str(e)}")
+                return Response(
+                    {"error": f"1FourYou payment failed: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
         elif bundle.payment_method != 'crypto':
             return Response(
                 {"error": "Invalid payment method."},
@@ -834,7 +1164,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                     unit='gb',
                     comment=f"Bundle purchase: {bundle.name}"
                 )
-                logger.info(
+                logger.debug(
                     f"Applied data top-up for user {request.user.username}: "
                     f"{top_up_response}"
                 )
@@ -846,7 +1176,7 @@ class WalletViewSet(viewsets.ModelViewSet):
                     unit='minutes',
                     comment=f"Bundle purchase: {bundle.name}"
                 )
-                logger.info(
+                logger.debug(
                     f"Applied time top-up for user {request.user.username}: "
                     f"{top_up_response}"
                 )
@@ -926,6 +1256,351 @@ class WalletViewSet(viewsets.ModelViewSet):
                 "bundle_name": bundle.name,
                 "amount_applied": bundle.data_gb if bundle.is_data_bundle else bundle.time_minutes,
                 "unit": "GB" if bundle.is_data_bundle else "minutes",
+                "transaction_receipt": tx_receipt_dict
+            },
+            status=status.HTTP_201_CREATED
+        )
+
+    @action(detail=False, methods=['post'], url_path='purchase-data-bundle')
+    def purchase_data_bundle(self, request):
+        """
+        Purchase a data bundle by taking a crypto or one4you payment,
+        then automatically apply the data top-up to the user's
+        OCS subscriber account.
+
+        Expects:
+          - bundle_id: PK of the DataBundle to purchase.
+        """
+        # Validate user has wallet
+        wallet_exists = Wallet.objects.filter(user=request.user).exists()
+        if not wallet_exists:
+            return Response(
+                {'detail': 'Wallet not found.'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+        wallet = Wallet.objects.filter(user=request.user).first()
+
+        # Validate input
+        serializer = PurchaseDataBundleSerializer(data=request.data)
+        if not serializer.is_valid():
+            return Response(
+                serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        bundle_id = serializer.validated_data['bundle_id']
+
+        # Retrieve the DataBundle
+        try:
+            bundle = DataBundle.objects.get(pk=bundle_id, is_active=True)
+        except DataBundle.DoesNotExist:
+            return Response(
+                {"error": "Bundle not found or is not active."},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        # Get the OCSInstance from the bundle
+        ocs_instance = bundle.ocs_instance
+
+        # Verify user has an OCSSubscriber for this instance
+        try:
+            ocs_subscriber = OCSSubscriber.objects.get(
+                user=request.user,
+                ocs_instance=ocs_instance
+            )
+        except OCSSubscriber.DoesNotExist:
+            return Response(
+                {
+                    "error": "You do not have a subscriber account for this OCS instance."
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Check payment method
+        if bundle.payment_method == 'other':
+            return Response(
+                {"error": "This payment method is not supported."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        elif bundle.payment_method == '1foryou':
+            # 1FourYou payment flow
+            oneforyou_pin_raw = serializer.validated_data.get('oneforyou_pin')
+            phone_number = serializer.validated_data.get('phone_number')
+            
+            if not oneforyou_pin_raw or not phone_number:
+                return Response(
+                    {"error": "1FourYou PIN and phone number are required for 1foryou payment method."},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+            
+            # Normalize PIN by removing spaces, hyphens, etc.
+            oneforyou_pin = normalize_oneforyou_pin(oneforyou_pin_raw)
+            logger.debug(f"Normalized 1FourYou PIN: '{oneforyou_pin_raw}' -> '{oneforyou_pin}'")
+            
+            # Convert bundle price to cents
+            amount_cents = int(bundle.price * 100)
+            
+            try:
+                # Redeem 1FourYou voucher using the shared client instance
+                redemption_response = oneforyou_client.redeem_voucher(
+                    voucher_pin=oneforyou_pin,
+                    amount_cents=amount_cents,
+                    phone_number=phone_number
+                )
+                
+                logger.debug(f"1FourYou redemption successful for user {request.user.username}: {redemption_response}")
+                
+                # Extract reference and change voucher from response
+                reference = redemption_response.get("reference", "")
+                voucher_obj = redemption_response.get("voucher", {})
+                
+                # Extract change voucher details if present
+                change_voucher_pin = None
+                change_voucher_amount = None
+                if voucher_obj:
+                    change_voucher_pin = voucher_obj.get("pin")
+                    change_voucher_amount_cents = voucher_obj.get("amount", 0)
+                    # Convert cents to ZAR (divide by 100)
+                    if change_voucher_amount_cents:
+                        change_voucher_amount = Decimal(str(change_voucher_amount_cents)) / 100
+                
+                # Create transaction record for 1FourYou payment
+                # Store the original (raw) PIN in sender_address for reference
+                transaction = Transaction.objects.create(
+                    sender=request.user,
+                    recipient_address="1FourYou",
+                    sender_address=oneforyou_pin_raw,  # Store original format for reference
+                    amount=Decimal(str(bundle.price)),
+                    category="OCS_DATA_BUNDLE",
+                    token="ZAR",
+                    oneforyou_reference=reference,
+                    change_voucher_pin=change_voucher_pin,
+                    change_voucher_amount=change_voucher_amount,
+                )
+                
+                # Apply the top-up via OCS API
+                try:
+                    ocs_client = OCSAPIClient(ocs_instance)
+                    # Convert bundle data to bytes (data_mb is in MB)
+                    amount_bytes = bundle.data_mb * 1024 * 1024  # Convert MB to bytes
+                    top_up_response = ocs_client.top_up_balance(
+                        product_id=ocs_subscriber.product_id,
+                        amount_bytes=amount_bytes,
+                        description=f"Data bundle purchase: {bundle.name}"
+                    )
+                    
+                    if not top_up_response["success"]:
+                        raise Exception(f"OCS top-up failed: {top_up_response['error']}")
+                    
+                    logger.debug(
+                        f"Applied data top-up for user {request.user.username}: "
+                        f"{top_up_response}"
+                    )
+
+                except Exception as e:
+                    logger.error(f"OCS API error applying top-up: {str(e)}")
+                    # Still create the purchase record as failed
+                    DataPurchase.objects.create(
+                        user=request.user,
+                        bundle=bundle,
+                        ocs_subscriber=ocs_subscriber,
+                        transaction=transaction,
+                        payment_method='1foryou',
+                        amount_paid=float(bundle.price),
+                        status='failed'
+                    )
+                    return Response(
+                        {"error": f"Payment successful but top-up failed: {str(e)}"},
+                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
+                    )
+
+                # Create successful purchase record
+                DataPurchase.objects.create(
+                    user=request.user,
+                    bundle=bundle,
+                    ocs_subscriber=ocs_subscriber,
+                    transaction=transaction,
+                    payment_method='1foryou',
+                    amount_paid=float(bundle.price),
+                    status='success'
+                )
+
+                # Prepare response with change voucher info if present
+                response_data = {
+                    "success": True,
+                    "message": f"Successfully purchased {bundle.name} using 1FourYou payment",
+                    "bundle": {
+                        "name": bundle.name,
+                        "data_mb": bundle.data_mb,
+                        "unit": "MB"
+                    },
+                    "payment_method": "1foryou",
+                    "amount_paid": bundle.price,
+                    "transaction_reference": reference
+                }
+                
+                # Check if there's a change voucher in the response (v4 format)
+                if voucher_obj and change_voucher_pin:
+                    response_data["change_voucher"] = {
+                        "pin": change_voucher_pin,
+                        "amount": float(change_voucher_amount) if change_voucher_amount else None,
+                        "expiry_date": voucher_obj.get("expiryDate"),
+                        "serial_number": voucher_obj.get("serialNumber"),
+                        "status": voucher_obj.get("status"),
+                        "message": "Please save this voucher PIN for future use"
+                    }
+
+                return Response(response_data, status=status.HTTP_200_OK)
+                
+            except Exception as e:
+                logger.error(f"1FourYou redemption failed for user {request.user.username}: {str(e)}")
+                return Response(
+                    {"error": f"1FourYou payment failed: {str(e)}"},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+                
+        elif bundle.payment_method != 'crypto':
+            return Response(
+                {"error": "Invalid payment method."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Crypto payment flow
+        # Check that the instance accepts crypto payments
+        if not ocs_instance.accepts_crypto:
+            return Response(
+                {
+                    "error": "This OCS instance does not accept crypto.",
+                    "accepts_crypto": ocs_instance.accepts_crypto
+                },
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Get network admin wallet address
+        network_admin = ocs_instance.administrators.first()
+        if not network_admin:
+            return Response(
+                {"error": "No network admin found for this instance."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        admin_wallet = Wallet.objects.filter(user=network_admin).first()
+        if not admin_wallet:
+            return Response(
+                {"error": "Network admin does not have a wallet."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Decrypt the user's private key
+        try:
+            decrypted_private_key = decrypt_private_key(wallet.private_key)
+        except Exception as e:
+            logger.error(f"Failed to decrypt wallet private key: {str(e)}")
+            return Response(
+                {"error": "Failed to decrypt wallet private key."},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Perform the crypto transaction
+        try:
+            crypto_utils = CryptoUtils(
+                contract_abi_path=settings.ABI_FILE_PATH,
+                contract_address=settings.CONTRACT_ADDRESS,
+                registry=settings.FAUCET_AND_INDEX_ENABLED,
+                faucet=settings.FAUCET_AND_INDEX_ENABLED,
+            )
+
+            tx_receipt = crypto_utils.send_to_wallet_address(
+                wallet.address,
+                decrypted_private_key,
+                admin_wallet.address,
+                float(bundle.price)
+            )
+        except Exception as e:
+            logger.error(f"Crypto transaction failed: {str(e)}")
+            return Response(
+                {"error": f"Transaction failed: {str(e)}"},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Record the transaction
+        transaction = Transaction.objects.create(
+            sender=request.user,
+            recipient_address=admin_wallet.address,
+            recipient=network_admin,
+            amount=float(bundle.price),
+            category="DATA_BUNDLE",
+            transaction_hash=tx_receipt.transactionHash.hex(),
+            block_number=tx_receipt.blockNumber,
+            block_hash=tx_receipt.blockHash.hex(),
+            gas_used=tx_receipt.gasUsed,
+            token="KRONE",
+        )
+
+        # Apply the top-up via OCS API
+        try:
+            ocs_client = OCSAPIClient(ocs_instance)
+            
+            # Convert bundle data to bytes (data_mb is in MB)
+            amount_bytes = bundle.data_mb * 1024 * 1024  # Convert MB to bytes
+            
+            top_up_response = ocs_client.top_up_balance(
+                product_id=ocs_subscriber.product_id,
+                amount_bytes=amount_bytes,
+                description=f"Data bundle purchase: {bundle.name}"
+            )
+            
+            if not top_up_response["success"]:
+                raise Exception(f"OCS top-up failed: {top_up_response['error']}")
+            
+            logger.debug(
+                f"Applied data top-up for user {request.user.username}: "
+                f"{top_up_response}"
+            )
+
+        except Exception as e:
+            logger.error(f"OCS API error applying top-up: {str(e)}")
+            # Still create the purchase record as failed
+            DataPurchase.objects.create(
+                user=request.user,
+                bundle=bundle,
+                ocs_subscriber=ocs_subscriber,
+                transaction=transaction,
+                payment_method='crypto',
+                amount_paid=float(bundle.price),
+                status='failed'
+            )
+            return Response(
+                {"error": f"Payment successful but top-up failed: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
+
+        # Create the DataPurchase record
+        data_purchase = DataPurchase.objects.create(
+            user=request.user,
+            bundle=bundle,
+            ocs_subscriber=ocs_subscriber,
+            transaction=transaction,
+            payment_method='crypto',
+            amount_paid=float(bundle.price),
+            status='success'
+        )
+
+        tx_receipt_dict = {
+            'transactionHash': tx_receipt.transactionHash.hex(),
+            'blockHash': tx_receipt.blockHash.hex(),
+            'blockNumber': tx_receipt.blockNumber,
+            'gasUsed': tx_receipt.gasUsed,
+            'status': tx_receipt.status,
+            'transactionIndex': tx_receipt.transactionIndex
+        }
+
+        return Response(
+            {
+                "data_purchase_id": data_purchase.id,
+                "bundle_name": bundle.name,
+                "data_mb": bundle.data_mb,
+                "unit": "MB",
                 "transaction_receipt": tx_receipt_dict
             },
             status=status.HTTP_201_CREATED

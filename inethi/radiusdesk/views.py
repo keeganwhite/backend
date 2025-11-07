@@ -85,9 +85,11 @@ class RadiusDeskInstanceViewSet(viewsets.ModelViewSet):
         results = []
         for instance in instances:
             # Filter profiles for this instance where cost > 0
+            # Exclude permanent user registration profiles
             profiles = RadiusDeskProfile.objects.filter(
                 radius_desk_instance=instance,
-                cost__gt=0
+                cost__gt=0,
+                is_permanent_user_registration=False
             )
             instance_data = RadiusDeskInstanceSerializer(instance).data
             instance_data["profiles"] = RadiusDeskProfileSerializer(
@@ -159,11 +161,13 @@ class RadiusDeskProfileViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        """Filter Profiles by Realm, Cloud, and/or RadiusDeskInstance."""
+        """Filter Profiles by Realm, Cloud, and/or RadiusDeskInstance.
+        Excludes internal permanent user registration profiles."""
         realm_id = self.request.query_params.get("realm")
         cloud_id = self.request.query_params.get("cloud")
         radius_instance_id = self.request.query_params.get("radius_instance")
-        queryset = self.queryset
+        # Exclude permanent user registration profiles from all queries
+        queryset = self.queryset.filter(is_permanent_user_registration=False)
         if realm_id:
             queryset = queryset.filter(realm_id=realm_id)
         if cloud_id:
@@ -208,7 +212,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
         radius_desk_instance_pk = request.query_params.get("radius_desk_instance_pk")
         radius_desk_cloud_pk = request.query_params.get("radius_desk_cloud_pk")
 
-        logger.info(f"Fetching voucher stats for voucher_code: {voucher_code}")
+        logger.debug(f"Fetching voucher stats for voucher_code: {voucher_code}")
 
         if not voucher_code or not radius_desk_instance_pk or not radius_desk_cloud_pk:
             return Response(
@@ -343,7 +347,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
         page = paginator.paginate_queryset(vouchers, request)
         serializer = self.get_serializer(page, many=True)
         for voucher in serializer.data:
-            logger.info(f"Voucher: {voucher}")
+            logger.debug(f"Voucher: {voucher}")
         return paginator.get_paginated_response(serializer.data)
 
     @action(
@@ -715,7 +719,7 @@ class VoucherViewSet(viewsets.ModelViewSet):
             paginator = VoucherPagination()
             page = paginator.paginate_queryset(vouchers, request)
             serializer = self.get_serializer(page, many=True)
-            logger.info(f"Vouchers: {serializer.data}")
+            logger.debug(f"Vouchers: {serializer.data}")
             return paginator.get_paginated_response(serializer.data)
 
         except Exception as e:
@@ -838,16 +842,18 @@ class RadiusDeskUserViewSet(viewsets.ModelViewSet):
         
         Expects:
           - radius_desk_instance_pk: PK of the RadiusDeskInstance
-          - profile_pk: PK of the RadiusDeskProfile to assign
+          - profile_pk: PK of the RadiusDeskProfile to assign (optional, ignored - uses profile with is_permanent_user_registration=True)
           - password: Password for the permanent user
           - username (optional): Username (auto-generated if not provided)
           - name, surname, email, phone (optional): User details
+        
+        Automatically uses the profile marked with is_permanent_user_registration=True
+        for the specified instance. This profile is excluded from all profile query endpoints.
         """
         serializer = CreateRadiusDeskUserSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
         radius_desk_instance_pk = serializer.validated_data['radius_desk_instance_pk']
-        profile_pk = serializer.validated_data['profile_pk']
         password = serializer.validated_data['password']
         username = serializer.validated_data.get('username', '')
         name = serializer.validated_data.get('name', '')
@@ -856,9 +862,20 @@ class RadiusDeskUserViewSet(viewsets.ModelViewSet):
         phone = serializer.validated_data.get('phone', '')
 
         try:
-            # Get the RadiusDesk instance and profile
+            # Get the RadiusDesk instance
             instance = RadiusDeskInstance.objects.get(pk=radius_desk_instance_pk)
-            profile = RadiusDeskProfile.objects.get(pk=profile_pk)
+            
+            # Get the permanent user registration profile for this instance
+            try:
+                profile = RadiusDeskProfile.objects.get(
+                    radius_desk_instance=instance,
+                    is_permanent_user_registration=True
+                )
+            except RadiusDeskProfile.DoesNotExist:
+                return Response(
+                    {"error": "Permanent user registration profile not found for this RadiusDesk instance."},
+                    status=status.HTTP_404_NOT_FOUND
+                )
 
             # Check if user already has an account in this instance
             if RadiusDeskUser.objects.filter(
@@ -889,7 +906,7 @@ class RadiusDeskUserViewSet(viewsets.ModelViewSet):
                 phone=phone or ''
             )
 
-            logger.info(f"Created permanent user in RadiusDesk: {user_response}")
+            logger.debug(f"Created permanent user in RadiusDesk: {user_response}")
 
             # Create RadiusDeskUser record
             radiusdesk_user = RadiusDeskUser.objects.create(
@@ -969,7 +986,7 @@ class RadiusDeskUserViewSet(viewsets.ModelViewSet):
                 comment=comment
             )
 
-            logger.info(
+            logger.debug(
                 f"Added {amount}{unit} data to user {radiusdesk_user.username}: "
                 f"{top_up_response}"
             )
@@ -1046,7 +1063,7 @@ class RadiusDeskUserViewSet(viewsets.ModelViewSet):
                 comment=comment
             )
 
-            logger.info(
+            logger.debug(
                 f"Added {amount} {unit} to user {radiusdesk_user.username}: "
                 f"{top_up_response}"
             )

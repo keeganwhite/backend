@@ -85,7 +85,7 @@ class RetrieveUserView(RetrieveAPIView):
     lookup_field = "id"
 
     def get(self, request, *args, **kwargs):
-        logger.info(
+        logger.debug(
             f"User {request.user} requested user details for id={kwargs.get('id')}"
         )
         try:
@@ -100,10 +100,10 @@ class CreateUserView(generics.CreateAPIView):
     serializer_class = UserSerializer
 
     def create(self, request, *args, **kwargs):
-        logger.info(f"User creation requested with data: {request.data}")
+        logger.debug(f"User creation requested with data: {request.data}")
         try:
             response = super().create(request, *args, **kwargs)
-            logger.info(f"User created successfully: {response.data}")
+            logger.debug(f"User created successfully: {response.data}")
             return response
         except Exception as e:
             logger.error(f"User creation failed: {e}")
@@ -116,7 +116,7 @@ class NetworkAdminLoginView(ObtainAuthToken):
     renderer_classes = api_settings.DEFAULT_RENDERER_CLASSES
 
     def post(self, request, *args, **kwargs):
-        logger.info(f"Network admin login attempt for data: {request.data}")
+        logger.debug(f"Network admin login attempt for data: {request.data}")
         serializer = self.serializer_class(
             data=request.data, context={'request': request}
         )
@@ -135,7 +135,7 @@ class NetworkAdminLoginView(ObtainAuthToken):
         keycloak_token = serializer.validated_data.get('token')
         refresh_token = serializer.validated_data.get('refresh_token')
         expires_in = serializer.validated_data.get('expires_in')
-        logger.info(f"Network admin {user} logged in successfully.")
+        logger.debug(f"Network admin {user} logged in successfully.")
         return Response({
             'token': keycloak_token,
             'refresh_token': refresh_token,
@@ -149,7 +149,7 @@ class CreateTokenView(ObtainAuthToken):
     renderer_classes = api_settings.DEFAULT_RENDERER_CLASSES
 
     def post(self, request, *args, **kwargs):
-        logger.info(f"Token creation requested for data: {request.data}")
+        logger.debug(f"Token creation requested for data: {request.data}")
         serializer = self.serializer_class(
             data=request.data, context={'request': request}
         )
@@ -162,7 +162,7 @@ class CreateTokenView(ObtainAuthToken):
         keycloak_token = serializer.validated_data.get('token')
         refresh_token = serializer.validated_data.get('refresh_token')
         expires_in = serializer.validated_data.get('expires_in')
-        logger.info(
+        logger.debug(
             f"Token created for user: {serializer.validated_data.get('user')}"
         )
         return Response({
@@ -177,14 +177,14 @@ class RefreshTokenView(APIView):
     serializer = KeycloakAuthTokenSerializer()
 
     def post(self, request, *args, **kwargs):
-        logger.info(f"Refresh token requested: {request.data}")
+        logger.debug(f"Refresh token requested: {request.data}")
         refresh_token = request.data.get('refresh_token')
         if not refresh_token:
             logger.error("Refresh token missing in request.")
             return Response({'detail': 'Refresh token required.'}, status=400)
         try:
             token_data = self.serializer.refresh_token_if_needed(refresh_token)
-            logger.info("Token refreshed successfully.")
+            logger.debug("Token refreshed successfully.")
             return Response(token_data, status=200)
         except serializers.ValidationError as e:
             logger.error(f"Token refresh failed: {e.detail}")
@@ -204,7 +204,7 @@ class ManageUserView(generics.RetrieveUpdateAPIView):
     def update(self, request, *args, **kwargs):
         user = self.get_object()
         partial = kwargs.pop('partial', False)
-        logger.info(
+        logger.debug(
             f"User {user} profile update requested with data: {request.data}"
         )
         serializer = self.get_serializer(
@@ -216,7 +216,7 @@ class ManageUserView(generics.RetrieveUpdateAPIView):
         self.perform_update(serializer)
         try:
             update_keycloak_user(user, request.data)
-            logger.info(f"User {user} profile updated successfully.")
+            logger.debug(f"User {user} profile updated successfully.")
         except Exception as e:
             logger.error(f"Failed to update Keycloak user for {user}: {e}")
         return Response(serializer.data)
@@ -246,7 +246,7 @@ class UserSearchView(generics.ListAPIView):
     search_fields = ['username']
 
     def get(self, request, *args, **kwargs):
-        logger.info(
+        logger.debug(
             f"User search requested by {request.user} with params: {request.query_params}"
         )
         try:
@@ -275,7 +275,7 @@ class AdminUserListView(generics.ListAPIView):
         return get_user_model().objects.prefetch_related('wallet_set').all()
 
     def get(self, request, *args, **kwargs):
-        logger.info(
+        logger.debug(
             f"Admin user list requested by {request.user} with params: {request.query_params}"
         )
         try:
@@ -300,7 +300,7 @@ class AdminUserDetailView(generics.RetrieveAPIView):
         return get_user_model().objects.prefetch_related('wallet_set').all()
 
     def get(self, request, *args, **kwargs):
-        logger.info(
+        logger.debug(
             f"Admin user detail requested by {request.user} for user {kwargs.get('pk')}"
         )
         try:
@@ -324,7 +324,7 @@ class AdminUserUpdateView(generics.UpdateAPIView):
     def update(self, request, *args, **kwargs):
         user = self.get_object()
         partial = kwargs.pop('partial', False)
-        logger.info(
+        logger.debug(
             f"Admin user update requested by {request.user} for user {user.id} with data: {request.data}"
         )
         serializer = self.get_serializer(
@@ -341,7 +341,7 @@ class AdminUserUpdateView(generics.UpdateAPIView):
                 'last_name': request.data.get('last_name', user.last_name),
             }
             update_keycloak_user(user, keycloak_data)
-            logger.info(f"User {user.id} updated successfully by admin.")
+            logger.debug(f"User {user.id} updated successfully by admin.")
         except Exception as e:
             logger.error(f"Failed to update Keycloak user for {user}: {e}")
         return Response(serializer.data)

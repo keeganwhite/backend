@@ -56,7 +56,7 @@ class WalletSerializer(serializers.ModelSerializer):
             'token': 'KRONE',
             'token_type': 'ERC-20',
         }
-        logger.info(f"Wallet data: {wallet_data}")
+        logger.debug(f"Wallet data: {wallet_data}")
 
         if settings.FAUCET_AND_INDEX_ENABLED:
             try:

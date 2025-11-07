@@ -55,7 +55,7 @@ class RadiusDeskClientManager:
                         )
                         return client
                     else:
-                        logger.info(
+                        logger.debug(
                             f"Cached client for instance {instance.name} "
                             f"is invalid, creating new one"
                         )
@@ -72,7 +72,7 @@ class RadiusDeskClientManager:
 
             # Create new client
             try:
-                logger.info(
+                logger.debug(
                     f"Creating new RadiusDeskClient for instance "
                     f"{instance.name}"
                 )
@@ -92,7 +92,7 @@ class RadiusDeskClientManager:
 
                 # Cache the client
                 cls._clients[instance_pk] = client
-                logger.info(
+                logger.debug(
                     f"Successfully created and cached client for instance "
                     f"{instance.name}"
                 )
@@ -122,12 +122,12 @@ class RadiusDeskClientManager:
             if instance_pk is not None:
                 if instance_pk in cls._clients:
                     del cls._clients[instance_pk]
-                    logger.info(
+                    logger.debug(
                         f"Cleared cached client for instance pk={instance_pk}"
                     )
             else:
                 cls._clients.clear()
-                logger.info("Cleared all cached RadiusDesk clients")
+                logger.debug("Cleared all cached RadiusDesk clients")
 
     @classmethod
     def refresh_client(cls, instance) -> RadiusDeskClient:
