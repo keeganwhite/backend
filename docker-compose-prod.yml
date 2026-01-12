@@ -48,15 +48,16 @@ services:
       - "traefik.http.routers.backenddbv1.entrypoints=${TRAEFIK_ENTRYPOINTS:-websecure}"
 
   redis:
+    restart: unless-stopped
     image: redis:alpine
     container_name: inethi-backend-celery-redis-v1
 
   celery:
+    restart: unless-stopped
     build:
       context: .
     env_file:
       - ./.env
-    restart: always
     command: celery -A inethi worker -l INFO
     volumes:
       - ./inethi:/inethi
@@ -68,6 +69,7 @@ services:
       - redis
       - db
   celery_beat:
+    restart: unless-stopped
     build:
       context: .
     env_file:
