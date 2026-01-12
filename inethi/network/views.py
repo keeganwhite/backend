@@ -2,6 +2,7 @@ from rest_framework import viewsets
 from .models import Host, Ping, Network
 from .serializers import HostSerializer, PingSerializer, NetworkSerializer
 from django.db import connection
+from django.utils import timezone
 from rest_framework.decorators import (
     api_view,
     authentication_classes,
@@ -696,11 +697,14 @@ def ingest_uptime_data(request):
             continue
 
         # Create the Ping record associated with the given network.
+        # The time field is required by TimescaleModel
+        ping_time = timestamp if timestamp else timezone.now()
         ping = Ping.objects.create(
+            time=ping_time,
             host=host,
             is_alive=is_alive,
             network=network,
-            timestamp=timestamp if timestamp else None
+            timestamp=ping_time
         )
         created.append(ping.id)
 
